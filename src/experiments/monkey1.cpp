@@ -41,9 +41,28 @@ void ensure_parent_dir(const std::string& path) {
 
 int run_monkey1(const Monkey1Config& cfg) {
     // ================= world =================
+    // distinct real-world odors occupy DISJOINT receptor ranges: overlapping
+    // profiles would let a partial cue of one odor directly drive the other
+    // odor's sensory line, corrupting episodic valence recall with sensory
+    // cross-talk (not an attractor property at all)
+    auto disjoint = [](const Odor& ref, Odor o, u64 seed) {
+        Rng rng(seed);
+        Odor out = o;
+        out.profile.assign(ref.profile.size(), 0.0f);
+        u32 placed = 0;
+        for (u32 g = 0; g < ref.profile.size() && placed < 15; ++g)
+            if (ref.profile[g] == 0.0f && o.profile[g] > 0.0f)
+                out.profile[g] = o.profile[g], ++placed;
+        for (u32 g = 0; g < ref.profile.size() && placed < 15; ++g)
+            if (out.profile[g] == 0.0f && ref.profile[g] == 0.0f &&
+                rng.bernoulli(0.35f))
+                out.profile[g] = rng.uniform(0.60f, 1.00f), ++placed;
+        return out;
+    };
     Odor od_a = make_odor(50, 15, cfg.seed + 101, 0.60f, 1.00f);
     od_a.name = "A";
-    Odor od_b = make_odor(50, 15, cfg.seed + 202, 0.60f, 1.00f);
+    Odor od_b = disjoint(od_a, make_odor(50, 15, cfg.seed + 202, 0.60f, 1.00f),
+                         cfg.seed + 202);
     od_b.name = "B";
     Odor lure = make_odor(50, 15, cfg.seed + 303, 0.60f, 1.00f);
     lure.name = "L";
@@ -165,6 +184,60 @@ int run_monkey1(const Monkey1Config& cfg) {
     const f64 completion_quality = hpc.familiarity();
     const bool valence_recalled = (vpos_cue > vneg_cue);  // A was rewarded
 
+    // ================= C. retrieval-practice consolidation =================
+    // Control arm first (fresh B-like pair would be cleaner; here we measure
+    // the SAME pair before/after practice on MB probes — within-agent design).
+    auto mb_probe = [&](const Odor& o) {
+        present(o, 500);
+        const auto r = brain.mb().readout();
+        gap(cfg.t_iti_ms);
+        return r.valence;
+    };
+    const f64 val_before = mb_probe(od_a) - mb_probe(od_b);
+    // retrieval practice: re-presenting A recalls v+ -> VUM pulses (via the
+    // axon); B recalls v- -> DAN. Consolidation follows from the MB's own
+    // learning — no software delivery of reward.
+    for (u32 k = 0; k < cfg.n_practice; ++k) {
+        present(od_a, 500);
+        brain.set_sensors(0.0f, 0.0f);
+        gap(1500);
+        present(od_b, 500);
+        run(300);
+        brain.set_sensors(0.0f, 0.0f);
+        gap(1500);
+    }
+    gap(60000);
+    const f64 val_after = mb_probe(od_a) - mb_probe(od_b);
+    const f64 consolidation_gain = val_after - val_before;
+
+    // ================= D. spacing effect =================
+    // massed: X+ 30 trials, ITI 300ms; spaced: Y- 30 trials, ITI 3000ms
+    // (within-agent counterbalanced order across seeds; here fixed order)
+    gap(3000);
+    // BOTH arms rewarded with the SAME US schedule; only the ITI differs
+    // (massed 300ms vs spaced 3000ms) — clean Ebbinghaus-style comparison.
+    for (u32 t = 0; t < cfg.n_spacing; ++t) {
+        present(od_x, 500);
+        gap(300);
+        brain.set_sensors(1.0f, 0.0f);
+        run(300);
+        brain.set_sensors(0.0f, 0.0f);
+        gap(300);
+    }
+    gap(60000);
+    const f64 val_massed = mb_probe(od_x);
+    for (u32 t = 0; t < cfg.n_spacing; ++t) {
+        present(od_y, 500);
+        gap(3000);
+        brain.set_sensors(1.0f, 0.0f);
+        run(300);
+        brain.set_sensors(0.0f, 0.0f);
+        gap(300);
+    }
+    gap(60000);
+    const f64 val_spaced = mb_probe(od_y);
+    const f64 spacing_effect = val_spaced - val_massed;  // spaced must win
+
     // ================= A. DMS =================
     struct DmsRow {
         u32 delay_ms = 0;
@@ -249,61 +322,6 @@ int run_monkey1(const Monkey1Config& cfg) {
         }
     }
     csv.close();
-
-    // ================= C. retrieval-practice consolidation =================
-    // Control arm first (fresh B-like pair would be cleaner; here we measure
-    // the SAME pair before/after practice on MB probes — within-agent design).
-    auto mb_probe = [&](const Odor& o) {
-        present(o, 500);
-        const auto r = brain.mb().readout();
-        gap(cfg.t_iti_ms);
-        return r.valence;
-    };
-    const f64 val_before = mb_probe(od_a) - mb_probe(od_b);
-    // retrieval practice: re-presenting A recalls v+ -> VUM pulses (via the
-    // axon); B recalls v- -> DAN. Consolidation follows from the MB's own
-    // learning — no software delivery of reward.
-    for (u32 k = 0; k < cfg.n_practice; ++k) {
-        present(od_a, 500);
-        run(300);
-        brain.set_sensors(0.0f, 0.0f);
-        gap(1500);
-        present(od_b, 500);
-        run(300);
-        brain.set_sensors(0.0f, 0.0f);
-        gap(1500);
-    }
-    gap(60000);
-    const f64 val_after = mb_probe(od_a) - mb_probe(od_b);
-    const f64 consolidation_gain = val_after - val_before;
-
-    // ================= D. spacing effect =================
-    // massed: X+ 30 trials, ITI 300ms; spaced: Y- 30 trials, ITI 3000ms
-    // (within-agent counterbalanced order across seeds; here fixed order)
-    gap(3000);
-    // BOTH arms rewarded with the SAME US schedule; only the ITI differs
-    // (massed 300ms vs spaced 3000ms) — clean Ebbinghaus-style comparison.
-    for (u32 t = 0; t < cfg.n_spacing; ++t) {
-        present(od_x, 500);
-        gap(300);
-        brain.set_sensors(1.0f, 0.0f);
-        run(300);
-        brain.set_sensors(0.0f, 0.0f);
-        gap(300);
-    }
-    gap(60000);
-    const f64 val_massed = mb_probe(od_x);
-    for (u32 t = 0; t < cfg.n_spacing; ++t) {
-        present(od_y, 500);
-        gap(3000);
-        brain.set_sensors(1.0f, 0.0f);
-        run(300);
-        brain.set_sensors(0.0f, 0.0f);
-        gap(300);
-    }
-    gap(60000);
-    const f64 val_spaced = mb_probe(od_y);
-    const f64 spacing_effect = val_spaced - val_massed;  // spaced must win
 
     // ================= report =================
     f64 acc_nodist_1s = 0, acc_dist_active_1s = 0, acc_dist_rest_1s = 0;

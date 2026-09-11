@@ -1,78 +1,78 @@
 {
   "consolidation": {
-    "gain": 0.08072230219841003,
-    "val_after": 0.0014914870262145996,
-    "val_before": -0.07923081517219543
+    "gain": -0.02384921908378601,
+    "val_after": -0.02697470784187317,
+    "val_before": -0.003125488758087158
   },
   "dms": [
     {
-      "acc": 0.4,
-      "cond": 0,
-      "delay_ms": 0,
-      "n": 20
-    },
-    {
-      "acc": 0.6,
-      "cond": 1,
-      "delay_ms": 0,
-      "n": 20
-    },
-    {
-      "acc": 0.65,
-      "cond": 2,
-      "delay_ms": 0,
-      "n": 20
-    },
-    {
-      "acc": 0.7,
-      "cond": 0,
-      "delay_ms": 1000,
-      "n": 20
-    },
-    {
-      "acc": 0.35,
-      "cond": 1,
-      "delay_ms": 1000,
-      "n": 20
-    },
-    {
-      "acc": 0.5,
-      "cond": 2,
-      "delay_ms": 1000,
-      "n": 20
-    },
-    {
-      "acc": 0.5,
-      "cond": 0,
-      "delay_ms": 2000,
-      "n": 20
-    },
-    {
-      "acc": 0.35,
-      "cond": 1,
-      "delay_ms": 2000,
-      "n": 20
-    },
-    {
-      "acc": 0.2,
-      "cond": 2,
-      "delay_ms": 2000,
-      "n": 20
-    },
-    {
       "acc": 0.45,
       "cond": 0,
-      "delay_ms": 4000,
+      "delay_ms": 0,
+      "n": 20
+    },
+    {
+      "acc": 0.5,
+      "cond": 1,
+      "delay_ms": 0,
+      "n": 20
+    },
+    {
+      "acc": 0.55,
+      "cond": 2,
+      "delay_ms": 0,
+      "n": 20
+    },
+    {
+      "acc": 0.35,
+      "cond": 0,
+      "delay_ms": 1000,
       "n": 20
     },
     {
       "acc": 0.55,
       "cond": 1,
-      "delay_ms": 4000,
+      "delay_ms": 1000,
       "n": 20
     },
     {
       "acc": 0.5,
+      "cond": 2,
+      "delay_ms": 1000,
+      "n": 20
+    },
+    {
+      "acc": 0.6,
+      "cond": 0,
+      "delay_ms": 2000,
+      "n": 20
+    },
+    {
+      "acc": 0.35,
+      "cond": 1,
+      "delay_ms": 2000,
+      "n": 20
+    },
+    {
+      "acc": 0.5,
+      "cond": 2,
+      "delay_ms": 2000,
+      "n": 20
+    },
+    {
+      "acc": 0.5,
+      "cond": 0,
+      "delay_ms": 4000,
+      "n": 20
+    },
+    {
+      "acc": 0.65,
+      "cond": 1,
+      "delay_ms": 4000,
+      "n": 20
+    },
+    {
+      "acc": 0.45,
       "cond": 2,
       "delay_ms": 4000,
       "n": 20
@@ -80,18 +80,18 @@
   ],
   "episodic": {
     "completion_quality": 0.5000447630882263,
-    "episodes": 26,
-    "valence_recalled": false,
-    "vneg": 200,
+    "episodes": 2,
+    "valence_recalled": true,
+    "vneg": 0,
     "vpos": 200
   },
   "experiment": "monkey1_primate_benchmarks",
-  "hpc_bound": 71932,
+  "hpc_bound": 68859,
   "pfc_bound": 0,
   "seed": 300,
   "spacing": {
-    "effect": -0.0006234943866729736,
-    "val_massed": -0.11288976669311523,
-    "val_spaced": -0.11351326107978821
+    "effect": -0.0009656846523284912,
+    "val_massed": 0.44412335753440857,
+    "val_spaced": 0.4431576728820801
   }
 }

@@ -42,7 +42,7 @@ struct HippocampusConfig {
 
     u32 n_ca3 = 1200;
     u32 mossy_fanin = 25;    // DG -> CA3 (mossy fibers dominate CA3 drive)
-    f32 mossy_quanta = 0.030f;
+    f32 mossy_quanta = 0.060f;
     f32 ca3_thresh = -0.056f;
 
     u32 ca3_rec_fanin = 60;   // ~5% of n_ca3 (diluted, Rolls 2013)  // diluted recurrent collaterals (Rolls 2013)
@@ -158,7 +158,7 @@ public:
         // accumulates while a full recruited assembly saturates instantly —
         // count-over-window then encodes assembly size (Rolls population
         // readout compressed into one neuron per sign)
-        c.v_thresh = 2.5f;
+        c.v_thresh = -0.055f;
         return c;
     }
 
@@ -233,13 +233,24 @@ public:
         // weights yet — competing then would let stale reward lock out the
         // stamping channel. Evidence accumulates ungated; the race runs at
         // READOUT (no US), where both channels carry real weights.
-        const f32 wta = (us_hold_ms_ > 0) ? 0.0f : 0.060f;
+        const f32 wta = (us_hold_ms_ > 0) ? 0.0f : 1.0f;
         vpos_.gi()[0] += wta * static_cast<f32>(vneg_.spikes()[0]);
         vneg_.gi()[0] += wta * static_cast<f32>(vpos_.spikes()[0]);
         vpos_.step(dt);
         vneg_.step(dt);
         val_pos_total_ += vpos_.spikes()[0];
         val_neg_total_ += vneg_.spikes()[0];
+        if (axon_refrac_ms_ > 0) --axon_refrac_ms_;
+        if (axon_pos_ms_ > 0) --axon_pos_ms_;
+        if (axon_neg_ms_ > 0) --axon_neg_ms_;
+        if (vpos_.spikes()[0] && axon_refrac_ms_ == 0) {
+            axon_pos_ms_ = 150;
+            axon_refrac_ms_ = 1200;
+        }
+        if (vneg_.spikes()[0] && axon_refrac_ms_ == 0) {
+            axon_neg_ms_ = 150;
+            axon_refrac_ms_ = 1200;
+        }
         val_ge_[0] *= 0.7f;
         val_ge_[1] *= 0.7f;
 
@@ -311,8 +322,12 @@ public:
     // recalled valence re-drives the neuromodulatory US neurons exactly like
     // the sugar sensor (predicted-US; Hammer & Menzel 1995). During SWR
     // replay this is dopamine-at-replay (Gomperts et al. 2015).
-    u8 vpos_drive() const { return vpos_.spikes()[0]; }
-    u8 vneg_drive() const { return vneg_.spikes()[0]; }
+    // phasic valence drive: the axon pulses for a short window after the
+    // channel wins the race, then adapts quiet for ~1s (VUM/DAN responses
+    // are transient; sustained firing would let a tied field wash the
+    // neuromodulatory signal out). Each episode delivers ONE pulse per sign.
+    u8 vpos_drive() const { return axon_pos_ms_ > 0; }
+    u8 vneg_drive() const { return axon_neg_ms_ > 0; }
     f32 familiarity() const { return familiarity_; }
     f32 novelty() const { return 1.0f - familiarity_; }
     u32 episodes() const { return episodes_; }
@@ -330,6 +345,15 @@ public:
     }
     f32 dbg_mossy_max() const { f32 m=0; for(f32 x: mossy_trace_) if(x>m) m=x; return m; }
     f32 dbg_vge(u32 sign) { return (sign? vneg_ : vpos_).ge()[0]; }
+    void dbg_trace_snapshot(std::vector<u8>& out, f32 th) const {
+        out.assign(cfg_.n_ca3, 0);
+        for (u32 i=0;i<cfg_.n_ca3;++i) out[i] = (ca3_trace_[i] > th);
+    }
+    u32 dbg_count_spike_overlap(const std::vector<u8>& set) const {
+        const u8* s = ca3_.spikes();
+        u32 n=0; for (u32 i=0;i<cfg_.n_ca3;++i) n += (set[i] && s[i]);
+        return n;
+    }
     u32 dbg_valn(u32 sign) const {  // # CA3 cells carrying ANY weight to sign
         u32 n=0;
         for (u32 pre=0; pre<cfg_.n_ca3; ++pre){
@@ -439,6 +463,7 @@ private:
     std::vector<f32> pr_ge_;
     Synapses kc2dg_, dg2ca3_, ca3rec_, ca32val_, ca32pr_;
     std::vector<f32> mossy_ge_, mossy_trace_, ca3_trace_;
+    i32 axon_pos_ms_ = 0, axon_neg_ms_ = 0, axon_refrac_ms_ = 0;
     f32 val_ge_[2] = {0.0f, 0.0f};
     f32 familiarity_ = 0.0f;
     f32 us_pos_ = 0.0f, us_neg_ = 0.0f;
