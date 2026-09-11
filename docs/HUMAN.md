@@ -10,7 +10,9 @@
 |---|---|---|---|---|
 | McClelland, McNaughton & O'Reilly 1995 (Psychol Rev) + Kumaran et al. 2016 (CTDL, PMC6964152) | 海馬: 高速・疎・一回学習。新皮質(ここではMB): 低速・統計的学習。新奇性が格納を司る | `src/circuits/hippocampus.hpp`, `brain.hpp` MB | HPC = one-shot エピソード記憶（DG→CA3 疎アセンブリ + US時 stamp-in）、MB = 低速弁別学習。2系統を並列に同一 PN ストリームへ接続 | B: completion 0.167, エピソード 525; C: 獲得 +0.080（>0 を達成） |
 | Rolls 2013 (Nat Rev Neurosci, PMC3812781) | DG の疎展開でパターン分離; 苔状線維の randomizing; CA3 反回帰（希釈）で自動連想→パターン完成; LTP + ヘテロシナプス LTD; CA3 疎性 ~2–5% | `hippocampus.hpp` | DG n1500 (fanin 5) → CA3 n1200 (mossy fanin 40, 希釈反回帰 fanin 60, one-shot η=0.55, cap, homeo LTD)。CA3 疎性を閾値/量子で ~2–8% に調整 | CA3 frac: odor ~0.03–0.08, baseline ~0.002。part cue (65%) → valence 再生 v+=193 / v−=0 |
-| Frey & Morris 1997 (Nature) — synaptic tagging & capture | 弱い入力でも「強い事象(US)」が近接して起きると、進行中の活動にタグが付き LTP が起きる | `hippocampus.hpp` step() encode gate | US live (us_hold 800ms) 中は反回帰書き込みの不応期を無視して stamp-in（us_refrac 500ms = US 1回あたり実質 1 スタンプ） | A+ stamp 時 episodes 増加 + valence 結合成立（B で v+=193 再生） |
+| Frey & Morris 1997 (Nature) — synaptic tagging & capture | 弱い入力でも「強い事象(US)」が近接して起きると、進行中の活動にタグが付き LTP が起きる | `hippocampus.hpp` step() encode gate | US live (us_hold 800ms) 中は反回帰書き込みの不応期を無視して stamp-in（us_refrac 500ms = US 1回あたり実質 1 スタンプ） | **B: cue 65% で v+=200 / v−=0 PASS** |
+| Buzsáki 2015 (Neuron) — SWR replay; Gomperts et al. 2024 / Ambrose et al. 2016 — 報酬がリプレイを方向づける | 静止中に CA3 が SWR で系列を再生; VTA ドーパミンが報酬トレースのリプレイを増加させる → 系統的固定 | `hippocampus.hpp` SWR 発振器 + valence axons | 静寂検出 (>200ms 無入力) + 指数分布 ISI 発振で CA3 興奮性パルス → 保存済みアセンブリ再点火。v+ スパイク→VUM (notify_reward でリプレイ率 4×) | C 固定 +0.075 (検索練習+リプレイ双方で成立) |
+| Li et al. 2003 (Nat Neurosci) — 体験/新奇性ゲート型符号化 | 内的活動ではなく現在の感覚経験が符号化の対象 | `hippocampus.hpp` mossy_trace 適格性 | スタンプ (反回帰+valence) は DG(mossy)駆動のある細胞のみ。リプレイ中の他エピソード細胞の交差結合を遮断 | exact 200/200 tie (A/B アトラクタ混合) が解消 → valence PASS |
 | Li, Cullen, Anwyl & Rowan 2003 (Nat Neurosci) | 新奇事象が海馬 LTP を促進（変調性 US が可塑性を開く） | 同上 | encode gate の US オーバーライド機構 | 同上 |
 | Brown & Aggleton 2001 (Nat Rev Neurosci) | 認知は familiarity(周囲皮質系) と recollection(海馬系) の二過程 | `hippocampus.hpp` perirhinal (PR) 層 | CA3→PR (n64, fanin 30, 無音初期化)。encode 時の stamp で「体験済み結合」を形成し、cue で PR が発火 = familiarity。活動量 EMA ではなく**結合量ベースの match 信号** | cue65 familiarity 0.44 vs 新奇 ≈0（活動量指標だと区別不能だった問題を修正） |
 | Funahashi, Bruce & Goldman-Rakic 1989 (J Neurophysiol); Curtis & D'Esposito 2003 | DLPFC: 刺激選択的な遅延中持続放電 = 作業記憶 | `src/circuits/pfc.hpp` | n400 bank, KC fanin, τm 0.040s。遅延中の持続活動を測定 | 部分的: 維持は ~1–1.75s で崩壊。D=1s での保持は現在**不合格**（次項 §3） |
@@ -28,10 +30,10 @@
 
 | ベンチ | 判定 | 値 |
 |---|---|---|
-| A. DMS (D=1s >0.7, distractor active>rest) | **FAIL** | 0.35 / active 0.55 / rest 0.45 / D=4s 0.35。信号は D=0 で存在、D≥1s は維持崩壊 |
-| B. エピソード完成 + valence 再生 | **valence PASS / completion 弱** | v+=193, v−=0（方向正しい）。completion 0.167 |
-| C. 検索練習による固定 | **PASS (>0)** | +0.080 (0.023→0.678 から較正後の値へ変動あり。詳細は results/monkey1.json) |
-| D. 間隔効果 (>0) | **FAIL** | −0.073 (massed 0.436 vs spaced 0.363) |
+| A. DMS (D=1s >0.7, distractor active>rest) | **FAIL** | 0.50 / 0.40 / 0.65 / 0.45。診断: ランダムグラフ反回帰では選択的アトラクタ不可 → 柱状トポグラフィ再設計へ (RESULTS §12) |
+| B. エピソード完成 + valence 再生 | **PASS** | v+=200 / v−=0 (65% cue, US 結合+WTA 読出)。completion 0.500 |
+| C. 検索練習による固定 | **PASS (>0)** | +0.075 (検索練習 + SWR リプレイ固定の併用) |
+| D. 間隔効果 (>0) | **PASS (>0)** | +0.078 (massed −0.192 vs spaced −0.114) |
 
 ## 4. 次に調査・採用予定の文献（キュー）
 
