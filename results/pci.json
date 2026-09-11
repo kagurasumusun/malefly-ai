@@ -1,0 +1,9 @@
+{
+  "bins_ms": 10,
+  "experiment": "pci_proxy",
+  "pci_aplx5_control": 1.419153268098652,
+  "pci_baseline": 0.6802961803119758,
+  "pci_perturbed_awake": 1.0204442704679637,
+  "seed": 7,
+  "sleepy_lt_awake": false
+}
