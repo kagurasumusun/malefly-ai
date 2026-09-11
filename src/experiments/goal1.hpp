@@ -25,6 +25,7 @@ struct Goal1Config {
     u32 t_outcome_ms = 200;     // odor offset -> DAN reinforcement delay
     u32 t_iti_ms = 500;         // inter-trial interval
     f32 concentration = 1.0f;
+    bool use_lh = true;         // lateral-horn innate valence (ablatable)
     std::string out_json = "results/goal1.json";
     std::string out_csv = "results/goal1.csv";
 };

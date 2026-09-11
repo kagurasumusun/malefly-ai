@@ -8,6 +8,7 @@
 #include "experiments/calib.hpp"
 #include "experiments/goal1.hpp"
 #include "experiments/goal2.hpp"
+#include "experiments/goal3.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -60,6 +61,8 @@ void usage() {
                  "usage:\n"
                  "  malefly goal1 [--seed N] [--trials N] [--probes N] "
                  "[--out results/goal1.json] [--csv results/goal1.csv]\n"
+                 "  malefly goal3 [--seed N] [--trials N] [--reversal N] [--back N] "
+                 "[--no-rpe] [--no-arousal] [--no-taxonomy] [--tag T]\n"
                  "  malefly calib [--seed N] [--pres N] [--kc-quanta F] "
                  "[--kc-theta F] [--apl-gain F]\n");
 }
@@ -84,6 +87,7 @@ int main(int argc, char** argv) {
             else if (flag_u32(argv, argc, i, "--probes", p)) cfg.n_probe_each = p;
             else if (flag_str(argv, argc, i, "--out", o)) cfg.out_json = o;
             else if (flag_str(argv, argc, i, "--csv", c)) cfg.out_csv = c;
+            else if (std::strcmp(argv[i], "--no-lh") == 0) cfg.use_lh = false;
             else { usage(); return 2; }
         }
         return run_goal1(cfg);
@@ -104,6 +108,27 @@ int main(int argc, char** argv) {
             else { usage(); return 2; }
         }
         return run_goal2(cfg);
+    }
+
+    if (cmd == "goal3") {
+        Goal3Config cfg;
+        for (int i = 2; i < argc; ++i) {
+            u64 s = cfg.seed;
+            u32 t = cfg.n_train, r = cfg.n_reversal, b = cfg.n_back;
+            std::string o = cfg.out_json, c = cfg.out_csv, tag = cfg.tag;
+            if (flag_u64(argv, argc, i, "--seed", s)) cfg.seed = s;
+            else if (flag_u32(argv, argc, i, "--trials", t)) cfg.n_train = t;
+            else if (flag_u32(argv, argc, i, "--reversal", r)) cfg.n_reversal = r;
+            else if (flag_u32(argv, argc, i, "--back", b)) cfg.n_back = b;
+            else if (flag_str(argv, argc, i, "--tag", tag)) cfg.tag = tag;
+            else if (flag_str(argv, argc, i, "--out", o)) cfg.out_json = o;
+            else if (flag_str(argv, argc, i, "--csv", c)) cfg.out_csv = c;
+            else if (std::strcmp(argv[i], "--no-rpe") == 0) cfg.use_rpe = false;
+            else if (std::strcmp(argv[i], "--no-arousal") == 0) cfg.use_arousal = false;
+            else if (std::strcmp(argv[i], "--no-taxonomy") == 0) cfg.use_taxonomy = false;
+            else { usage(); return 2; }
+        }
+        return run_goal3(cfg);
     }
 
     if (cmd == "calib") {

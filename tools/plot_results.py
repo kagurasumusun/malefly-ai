@@ -100,11 +100,75 @@ def fig_stm() -> None:
     plt.close(fig)
 
 
+def fig_goal3() -> None:
+    import statistics
+
+    def blocks_acc(path):
+        rows = list(csv.DictReader(open(path)))
+        xs, ys = [], []
+        for b0 in range(0, len(rows), 20):
+            ch = rows[b0:b0 + 20]
+            xs.append(b0 + 10)
+            ys.append(sum(int(r["correct"]) for r in ch) / len(ch))
+        return xs, ys
+
+    full_paths = ["results/goal3_full.csv", "results/goal3_full_seed7.csv",
+                  "results/goal3_full_seed8.csv"]
+    full_paths = [p for p in full_paths if os.path.exists(p)]
+    if not full_paths:
+        return
+
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+
+    def mean_series(paths):
+        all_x, all_y = None, []
+        for p in paths:
+            xs, ys = blocks_acc(p)
+            all_x = xs
+            all_y.append(ys)
+        mean_y = [statistics.mean(col) for col in zip(*all_y)]
+        return all_x, mean_y
+
+    # full-condition mean (bold) +/- seed spread
+    xs, mean_y = mean_series(full_paths)
+    per_seed = [blocks_acc(p)[1] for p in full_paths]
+    lo = [min(c) for c in zip(*per_seed)]
+    hi = [max(c) for c in zip(*per_seed)]
+    ax.fill_between(xs, lo, hi, color="#7a3fa8", alpha=0.15)
+    ax.plot(xs, mean_y, "-", color="#7a3fa8", lw=2.6,
+            label=f"full stack (mean of {len(full_paths)} seeds)")
+
+    # ablations (mean of each condition, dashed)
+    for cond, path in [("no RPE gate", "results/goal3_norpe.csv"),
+                       ("no arousal", "results/goal3_noarousal.csv"),
+                       ("no KC taxonomy", "results/goal3_notax.csv")]:
+        if os.path.exists(path):
+            ax_p = [path]
+            x2, y2 = mean_series(ax_p)
+            ax.plot(x2, y2, "--", color="gray", alpha=0.75, lw=1.3, label=cond)
+
+    for x, lab in [(100, "REVERSAL"), (200, "flip back")]:
+        ax.axvline(x, color="#b03030", ls=":", lw=1.5)
+        ax.text(x + 2, 1.03, lab, fontsize=8, color="#b03030")
+    ax.axhline(0.7, color="#2a8f3f", ls=":", lw=1)
+    ax.axhline(0.5, color="gray", ls="--", lw=1)
+    ax.set_ylim(0, 1.1)
+    ax.set_xlim(0, 260)
+    ax.set_xlabel("trial (phase 1: A+/B- | phase 2: A-/B+ | phase 3: A+/B-)")
+    ax.set_ylabel("fraction correct (20-trial blocks)")
+    ax.set_title("Goal 3: on-circuit reversal adaptation (no retraining)")
+    ax.legend(fontsize=8, loc="lower left", ncol=2)
+    fig.tight_layout()
+    fig.savefig(f"{FIG}/goal3_reversal.png", dpi=140)
+    plt.close(fig)
+
+
 def main() -> None:
     os.makedirs(FIG, exist_ok=True)
     fig_goal1()
     fig_transfer()
     fig_stm()
+    fig_goal3()
     print("figures written to", FIG)
 
 

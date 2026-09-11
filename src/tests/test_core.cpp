@@ -8,6 +8,8 @@
 // ============================================================================
 #include "circuits/action_selection.hpp"
 #include "circuits/antennal_lobe.hpp"
+#include "circuits/lateral_horn.hpp"
+#include "circuits/modulator.hpp"
 #include "circuits/mushroom_body.hpp"
 #include "core/lif.hpp"
 #include "core/rng.hpp"
@@ -16,6 +18,7 @@
 #include "util/odors.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -125,6 +128,9 @@ static void test_mb_plasticity() {
     MushroomBodyConfig cfg;
     cfg.n_kc = 100;
     cfg.kc_fanin = 3;
+    cfg.use_taxonomy = false;  // isolate the canonical rule from adoptions
+    cfg.rpe_gating = false;
+    cfg.oppo_restore = 0.0f;   // legacy depression-only rule (tested below)
     MushroomBody mb(cfg, rng, 10);
 
     const f32 wa0 = mb.w_appr()[0], wv0 = mb.w_avoid()[0];
@@ -192,6 +198,150 @@ static void test_odors() {
         CHECK(c.profile[g] <= 1.0f + 1e-6f);
 }
 
+// ---------- [Allen BICCN] KC subtype taxonomy ----------
+static void test_taxonomy() {
+    MushroomBodyConfig cfg;
+    cfg.use_taxonomy = true;
+    Rng rng(31);
+    MushroomBody mb(cfg, rng, 50);
+    const auto counts = mb.subtype_counts();
+    CHECK(counts.size() == 3);
+    u32 total = 0;
+    for (u32 c : counts) total += c;
+    CHECK(total == cfg.n_kc);
+    // measured fractions from MaleCNS v1.0 (allow 2% absolute tolerance)
+    const f64 frac_ab = static_cast<f64>(counts[0]) / cfg.n_kc;
+    const f64 frac_abp = static_cast<f64>(counts[1]) / cfg.n_kc;
+    const f64 frac_g = static_cast<f64>(counts[2]) / cfg.n_kc;
+    CHECK(std::fabs(frac_ab - KC_SUBTYPES[0].frac) < 0.02);
+    CHECK(std::fabs(frac_abp - KC_SUBTYPES[1].frac) < 0.02);
+    CHECK(std::fabs(frac_g - KC_SUBTYPES[2].frac) < 0.02);
+    // fractions sum to ~1 and come from real data (alpha-beta largest)
+    CHECK(frac_ab > frac_abp && frac_g > frac_abp);
+}
+
+// ---------- [BRAIN Initiative] RPE-gated plasticity ----------
+static void test_rpe_gating() {
+    Rng rng(41);
+    MushroomBodyConfig cfg;
+    cfg.n_kc = 100;
+    cfg.kc_fanin = 3;
+    cfg.use_taxonomy = false;
+    cfg.rpe_gating = true;
+    MushroomBody mb(cfg, rng, 10);
+
+    // set all traces eligible; trace valence = naive (appr-avoid ~ +0.15)
+    for (u32 k = 0; k < cfg.n_kc; ++k) mb.debug_set_elig(k, 1.0f);
+    const f32 expected = mb.trace_readout().valence;
+    const f32 rpe = std::fabs(1.0f - expected);
+    const f32 gate = std::clamp(0.30f + 0.35f * rpe, 0.30f, 1.0f);
+    CHECK(mb.last_rpe_gate() == 1.0f);  // not applied yet
+
+    const f32 wv0 = mb.w_avoid()[0];
+    mb.apply_reinforcement(+1.0f);
+    CHECK(near(mb.w_avoid()[0], wv0 - cfg.eta_reward * gate, 1e-4f));
+    CHECK(near(mb.last_rpe_gate(), gate, 1e-5f));
+
+    // gate is bounded in [0.3, 1.0]; with baseline-referenced readout the
+    // naive expectation is 0, so +1 and -1 gate symmetrically at 0.65
+    CHECK(gate >= 0.30f && gate <= 1.0f);
+    CHECK(near(gate, 0.65f, 1e-3f));
+}
+
+// ---------- opponent restoration (reversal substrate) ----------
+static void test_opponent_restore() {
+    Rng rng(45);
+    MushroomBodyConfig cfg;
+    cfg.n_kc = 100;
+    cfg.kc_fanin = 3;
+    cfg.use_taxonomy = false;
+    cfg.rpe_gating = false;
+    cfg.oppo_restore = 1.0f;
+    MushroomBody mb(cfg, rng, 10);
+    const f32 naive_appr = mb.readout().a_appr;   // empty counters -> naive ref
+    const f32 wa0 = mb.w_appr()[0], wv0 = mb.w_avoid()[0];
+    mb.debug_set_elig(0, 1.0f);
+    mb.apply_reinforcement(+1.0f);
+    const f32 exp_appr = std::min(wa0 + cfg.eta_reward, naive_appr);
+    CHECK(near(mb.w_avoid()[0], wv0 - cfg.eta_reward, 1e-5f));       // canonical
+    CHECK(near(mb.w_appr()[0], exp_appr, 1e-5f));                    // restore toward naive
+    mb.debug_set_elig(0, 1.0f);
+    mb.apply_reinforcement(-1.0f);
+    const f32 exp_appr2 = std::max(0.0f, exp_appr - cfg.eta_punish);
+    CHECK(near(mb.w_appr()[0], exp_appr2, 1e-4f));                   // punished back
+    CHECK(mb.w_avoid()[0] <= naive_appr);
+    // restore=0 reproduces the legacy depression-only rule
+    MushroomBodyConfig cfg2 = cfg;
+    cfg2.oppo_restore = 0.0f;
+    MushroomBody mb2(cfg2, rng, 10);
+    const f32 wa2 = mb2.w_appr()[0];
+    mb2.debug_set_elig(0, 1.0f);
+    mb2.apply_reinforcement(+1.0f);
+    CHECK(near(mb2.w_appr()[0], wa2, 1e-6f));
+}
+
+// ---------- [Brain/MINDS] lateral horn region ----------
+static void test_lateral_horn() {
+    Rng rng(51);
+    LateralHorn lh(LateralHornConfig{}, rng, 50);
+    AntennalLobe al(AntennalLobeConfig{}, rng);
+    CHECK(std::string(lh.name()) == "lateral_horn");  // Region interface
+
+    auto response_to = [&](const Odor& o) {
+        lh.begin_window();
+        al.set_odor(&o, 1.0f);
+        for (int t = 0; t < 500; ++t) {
+            al.step(DT);
+            lh.set_input(al.pn_spikes());
+            lh.step(DT);
+        }
+        al.set_odor(nullptr, 0.0f);
+        return lh.innate_valence();
+    };
+    Odor strong = make_odor(50, 18, 77, 0.7f, 1.0f);
+    Odor air = uniform_odor(50, 0.12f);
+    const f32 v_strong = response_to(strong);
+    const f32 v_air = response_to(air);
+    CHECK(v_strong > 0.03f);            // patterned odor -> innate attraction
+    CHECK(v_air < 0.3f * v_strong);     // clean air -> (near) none
+    CHECK(v_strong >= 0.0f && v_air >= 0.0f);
+}
+
+// ---------- [EBRAINS] modulator & arousal-modulated decision ----------
+static void test_modulator_arousal() {
+    ModulatorConfig mc;
+    Modulator mod(mc);
+    mod.on_outcome(+1.0f);
+    CHECK(near(mod.arousal(), 0.25f, 1e-5f));
+    CHECK(mod.arousal() > 0.0f);
+    mod.on_outcome(-1.0f);
+    CHECK(mod.arousal() > 0.0f);  // punishments also raise arousal
+    mod.set_for_test(2.0f);
+    CHECK(mod.arousal() == 1.0f);  // clamped
+    for (int i = 0; i < 100000; ++i) mod.step(DT);  // 100 s >> tau_arousal(20 s)
+    CHECK(mod.arousal() < 0.01f);  // decays
+
+    // arousal raises exploration (temperature & epsilon): a strong valence
+    // stays decisive but is softened, and near-zero valence moves toward 0.5
+    Rng rng(61);
+    MushroomBodyConfig cfg;
+    MushroomBody::Readout r;
+    r.valence = +0.60f;
+    r.kc_active_frac = 0.10f;
+    DecisionContext calm, hot;
+    hot.arousal = 1.0f;
+    hot.use_arousal = true;
+    const Decision d_calm = decide_ctx(r, cfg, rng, false, calm);
+    const Decision d_hot = decide_ctx(r, cfg, rng, false, hot);
+    CHECK(d_hot.p_approach < d_calm.p_approach);   // softened, still > 0.5
+    CHECK(d_hot.p_approach > 0.5f);
+    r.valence = -0.60f;
+    const Decision d_calm2 = decide_ctx(r, cfg, rng, false, calm);
+    const Decision d_hot2 = decide_ctx(r, cfg, rng, false, hot);
+    CHECK(d_hot2.p_approach > d_calm2.p_approach); // softened, still < 0.5
+    CHECK(d_hot2.p_approach < 0.5f);
+}
+
 // ---------- MB trace-based readout (circuit-state memory) ----------
 static void test_trace_readout() {
     Rng rng(23);
@@ -207,8 +357,8 @@ static void test_trace_readout() {
     for (u32 k = 0; k < cfg.n_kc; ++k) mb.debug_set_elig(k, 1.0f);
     auto t1 = mb.trace_readout();
     CHECK(t1.active_frac == 1.0f);
-    // mean(w_appr in [0.45,0.75]) - mean(w_avoid in [0.30,0.60]) = +0.15
-    CHECK(t1.valence > 0.05f && t1.valence < 0.30f);
+    // baseline-referenced readout: naive weights -> delta valence ~ 0
+    CHECK(near(t1.valence, 0.0f, 0.02f));
 }
 
 // ---------- weak-signal default ----------
@@ -289,8 +439,13 @@ int main() {
     test_lif();
     test_synapses();
     test_mb_plasticity();
+    test_opponent_restore();
     test_env();
     test_odors();
+    test_taxonomy();
+    test_rpe_gating();
+    test_lateral_horn();
+    test_modulator_arousal();
     test_trace_readout();
     test_weak_signal_default();
     test_determinism();
