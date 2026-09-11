@@ -1,0 +1,111 @@
+{
+  "config": {
+    "gap_s": 120.0,
+    "n_interfere_trials": 10,
+    "n_probe_each": 3,
+    "n_stm_reps": 24,
+    "n_train_trials": 30,
+    "sample_ms": 1000,
+    "seed": 100,
+    "tau_elig_s": 0.6000000238418579
+  },
+  "experiment": "goal2_memory",
+  "interference": {
+    "pA_after": 0.8963034947713217,
+    "pB_after": 0.5712686777114868,
+    "pE_after": 0.8252521951993307,
+    "pN_after": 0.6578354835510254
+  },
+  "perf": {
+    "neurons": 2070,
+    "rt_factor": 13.598175372627402,
+    "sim_ms": 819000,
+    "sim_s": 819.0,
+    "wall_s": 60.228668741
+  },
+  "retention": {
+    "delta_pA": -0.002062817414601681,
+    "delta_pB": 0.01671852668126428,
+    "gap_s": 120.0,
+    "pA_after": 0.8742655316988627,
+    "pA_before": 0.8763283491134644,
+    "pB_after": 0.5478075742721558,
+    "pB_before": 0.5310890475908915
+  },
+  "run_hash": "4570927befcd1699",
+  "seed": 100,
+  "stm": [
+    {
+      "acc_count": 0.5,
+      "acc_trace": 0.5,
+      "delay_ms": 0,
+      "n": 24,
+      "p_appr_count_A": 1.0,
+      "p_appr_count_B": 1.0,
+      "p_appr_trace_A": 1.0,
+      "p_appr_trace_B": 1.0,
+      "trace_active_frac_A": 0.07968750006208818,
+      "trace_valence_A": 0.4414738068977992,
+      "trace_valence_B": 0.09078603688006599
+    },
+    {
+      "acc_count": 0.5,
+      "acc_trace": 0.5,
+      "delay_ms": 500,
+      "n": 24,
+      "p_appr_count_A": 1.0,
+      "p_appr_count_B": 1.0,
+      "p_appr_trace_A": 1.0,
+      "p_appr_trace_B": 1.0,
+      "trace_active_frac_A": 0.07970833421374361,
+      "trace_valence_A": 0.44471259166797,
+      "trace_valence_B": 0.09225513087585568
+    },
+    {
+      "acc_count": 0.5,
+      "acc_trace": 0.5,
+      "delay_ms": 1000,
+      "n": 24,
+      "p_appr_count_A": 1.0,
+      "p_appr_count_B": 1.0,
+      "p_appr_trace_A": 1.0,
+      "p_appr_trace_B": 1.0,
+      "trace_active_frac_A": 0.0813958328217268,
+      "trace_valence_A": 0.4404728524386883,
+      "trace_valence_B": 0.09802869086464246
+    },
+    {
+      "acc_count": 0.5,
+      "acc_trace": 0.5,
+      "delay_ms": 2000,
+      "n": 24,
+      "p_appr_count_A": 1.0,
+      "p_appr_count_B": 1.0,
+      "p_appr_trace_A": 1.0,
+      "p_appr_trace_B": 1.0,
+      "trace_active_frac_A": 0.0,
+      "trace_valence_A": 0.0,
+      "trace_valence_B": 0.021680081884066265
+    },
+    {
+      "acc_count": 0.5,
+      "acc_trace": 0.5,
+      "delay_ms": 4000,
+      "n": 24,
+      "p_appr_count_A": 1.0,
+      "p_appr_count_B": 1.0,
+      "p_appr_trace_A": 1.0,
+      "p_appr_trace_B": 1.0,
+      "trace_active_frac_A": 0.0,
+      "trace_valence_A": 0.0,
+      "trace_valence_B": 0.0
+    }
+  ],
+  "structure": {
+    "kc_jaccard_A_B": 0.027237354085603113,
+    "kc_jaccard_A_E": 0.12653061224489795,
+    "profile_overlap_A_B": 0.10866004228591919,
+    "profile_overlap_A_E": 0.39414849877357483
+  },
+  "version": "0.1.0"
+}

@@ -6,7 +6,7 @@
 # ============================================================================
 
 cxx      = g++
-cxxflags = -std=c++17 -O2 -Wall -Wextra -Wpedantic -Isrc
+cxxflags = -std=c++17 -O2 -Wall -Wextra -Wpedantic -Isrc -Ithird_party
 ldflags  =
 
 rule cxx

@@ -1,10 +1,15 @@
 #pragma once
 // ============================================================================
-// util/jsonw.hpp — minimal dependency-free JSON writer for experiment results.
-// Not a general JSON library; just enough for flat/nested result documents.
+// util/jsonw.hpp — JSON writer facade over nlohmann/json (vendored).
+//
+// The streaming writer used here previously was hand-rolled and had a
+// comma-bug; correctness is now delegated to the battle-tested nlohmann
+// implementation (third_party/nlohmann/json.hpp, v3.11.3, MIT). The legacy
+// streaming API (k/kv/obj/arr/val) is preserved so experiment code does not
+// change; output is written on destruction as indented JSON.
 // ============================================================================
 #include "core/types.hpp"
-#include <cstdio>
+#include <nlohmann/json.hpp>
 #include <ostream>
 #include <string>
 
@@ -12,61 +17,74 @@ namespace malefly {
 
 class JsonW {
 public:
-    explicit JsonW(std::ostream& os) : os_(os) {
-        stack_.push_back(false);
-        os_ << '{';
+    explicit JsonW(std::ostream& os) : os_(os) { stack_.push_back(&root_); }
+    ~JsonW() {
+        try {
+            os_ << root_.dump(2);
+        } catch (...) {
+        }
     }
 
-    void k(const std::string& key) {
-        sep();
-        esc(key);
-        os_ << ':';
+    void k(const std::string& key) { pending_ = key; }
+
+    void obj() {
+        if (stack_.back()->is_array()) {
+            stack_.back()->push_back(nlohmann::json::object());
+            stack_.push_back(&stack_.back()->back());
+        } else {
+            nlohmann::json& p = (*stack_.back())[pending_];
+            p = nlohmann::json::object();
+            stack_.push_back(&p);
+        }
+        pending_.clear();
     }
+    void end_obj() { pop(); }
 
-    void obj()  { sep(); stack_.push_back(false); os_ << '{'; }
-    void end_obj() { os_ << '}'; pop(); }
-
-    void arr()  { sep(); stack_.push_back(true); os_ << '['; }
-    void end_arr() { os_ << ']'; pop(); }
-
-    void val(f64 v) {
-        sep();
-        char b[40];
-        std::snprintf(b, sizeof b, "%.8g", v);
-        os_ << b;
-        just_valued_ = true;
+    void arr() {
+        if (stack_.back()->is_array()) {
+            stack_.back()->push_back(nlohmann::json::array());
+            stack_.push_back(&stack_.back()->back());
+        } else {
+            nlohmann::json& p = (*stack_.back())[pending_];
+            p = nlohmann::json::array();
+            stack_.push_back(&p);
+        }
+        pending_.clear();
     }
-    void val(f32 v)  { val(static_cast<f64>(v)); }
-    void val(u64 v)  { sep(); os_ << v; just_valued_ = true; }
-    void val(i64 v)  { sep(); os_ << v; just_valued_ = true; }
-    void val(int v)  { sep(); os_ << v; just_valued_ = true; }
-    void val(u32 v)  { val(static_cast<u64>(v)); }
-    void val(bool v) { sep(); os_ << (v ? "true" : "false"); just_valued_ = true; }
-    void val(const std::string& s) { sep(); esc(s); just_valued_ = true; }
+    void end_arr() { pop(); }
+
+    void val(f64 v)  { put(v); }
+    void val(f32 v)  { put(static_cast<f64>(v)); }
+    void val(u64 v)  { put(v); }
+    void val(i64 v)  { put(v); }
+    void val(int v)  { put(v); }
+    void val(u32 v)  { put(v); }
+    void val(bool v) { put(v); }
+    void val(const std::string& s) { put(s); }
 
     template <class T>
-    void kv(const std::string& key, const T& v) { k(key); val(v); }
+    void kv(const std::string& key, const T& v) {
+        k(key);
+        val(v);
+    }
+    void kv(const std::string& key, f32 v) { k(key); val(static_cast<f64>(v)); }
+    void kv(const std::string& key, u32 v) { k(key); val(static_cast<u64>(v)); }
 
 private:
-    void sep() {
-        if (just_valued_) os_ << ',';
-        just_valued_ = false;
+    template <class T>
+    void put(const T& v) {
+        if (stack_.back()->is_array()) stack_.back()->push_back(nlohmann::json(v));
+        else (*stack_.back())[pending_] = v;
     }
     void pop() {
-        stack_.pop_back();
-        just_valued_ = true;
+        if (stack_.size() > 1) stack_.pop_back();
+        pending_.clear();
     }
-    void esc(const std::string& s) {
-        os_ << '"';
-        for (char c : s) {
-            if (c == '"' || c == '\\') os_ << '\\';
-            os_ << c;
-        }
-        os_ << '"';
-    }
+
     std::ostream& os_;
-    std::vector<bool> stack_;
-    bool just_valued_ = false;
+    nlohmann::json root_ = nlohmann::json::object();
+    std::vector<nlohmann::json*> stack_;
+    std::string pending_;
 };
 
 }  // namespace malefly
