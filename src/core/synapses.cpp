@@ -58,7 +58,7 @@ Synapses make_random_fanin_dist(u32 n_pre, u32 n_post, f32 fanin_mean,
         // per-post fan-in ~ round(N(mean, sd)) clamped — heterogeneous wiring
         const f32 fi = fanin_mean + fanin_sd * rng.normal(0.0f, 1.0f);
         i32 k = static_cast<i32>(fi + 0.5f);
-        k = std::clamp(k, 3, 15);
+        k = std::clamp(k, 1, 40);  // [1,40]: coincidence-gated fan-in 2 needed for decorrelation (MICrONS wide ranges)
         k = std::min<i32>(k, static_cast<i32>(n_pre));
         for (i32 m = 0; m < k; ++m) {
             u32 avail = n_pre - static_cast<u32>(m);

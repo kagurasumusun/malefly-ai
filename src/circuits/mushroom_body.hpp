@@ -105,6 +105,8 @@ public:
     const Synapses& pn2kc() const { return pn2kc_; }
     u64 mbon_ops() const { return mbon_ops_; }
     u64 kc_total_spikes() const { return kc_.total_spikes(); }
+    const u8* kc_spike_pattern() const { return kc_.spikes(); }
+    u32 n_kc() const { return kc_.size(); }
     // measured subtype composition (Allen adoption audit)
     std::vector<u32> subtype_counts() const;
     f32 last_rpe_gate() const { return last_gate_; }

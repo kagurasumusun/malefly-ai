@@ -34,14 +34,15 @@
 namespace malefly {
 
 struct HippocampusConfig {
+    u64 seed = 42;
     u32 n_dg = 1500;         // dentate granule cells
-    u32 dg_fanin = 8;        // KC -> DG
-    f32 dg_quanta = 0.130f;
+    u32 dg_fanin = 6;        // KC -> DG
+    f32 dg_quanta = 0.014f;   // 1 KC subthreshold, 2-KC-in-window suprathreshold
     f32 dg_thresh = -0.054f; // tuned -> DG active ~2-5% (pattern separation)
 
     u32 n_ca3 = 1200;
-    u32 mossy_fanin = 40;    // DG -> CA3 (mossy fibers dominate CA3 drive)
-    f32 mossy_quanta = 0.016f;
+    u32 mossy_fanin = 25;    // DG -> CA3 (mossy fibers dominate CA3 drive)
+    f32 mossy_quanta = 0.024f;
     f32 ca3_thresh = -0.056f;
 
     u32 ca3_rec_fanin = 60;   // ~5% of n_ca3 (diluted, Rolls 2013)  // diluted recurrent collaterals (Rolls 2013)
@@ -65,6 +66,15 @@ struct HippocampusConfig {
     u32 n_pr = 64;
     u32 pr_fanin = 30;
 
+    // sharp-wave/ripple replay oscillator (Buzsaki 2015): during quiet
+    // wakefulness/sleep (no sensory stream), CA3 excitability pulses at
+    // ~exponential intervals re-ignite stored assemblies; with dopamine
+    // time-locked to replay events (Gomperts et al. 2015; Ambrose et al.
+    // 2016) this is the OFFLINE systems-consolidation machine
+    f32 swr_mean_isi_ms = 2500.0f;
+    u32 swr_dur_ms = 100;
+    f32 swr_drive = 0.010f;   // CA3 excitability pulse (per ms)
+
     f32 decay_strength = 0.0f;    // episodic trace decay per step (0 = none;
                                   // forgetting emerges via interference)
 };
@@ -87,7 +97,7 @@ public:
                                          rng, cfg.ca3_rec_quanta, 0.40f);
         // recurrent weights start at ~0: storage ADDS to them
         for (f32& w : ca3rec_.weights) w *= 0.02f;
-        ca32val_ = make_random_fanin_dist(cfg.n_ca3, 2, 150.0f, 8.0f,
+        ca32val_ = make_random_fanin_dist(cfg.n_ca3, 2, 400.0f, 12.0f,
                                           rng, 0.020f, 0.35f);
         // start near-silent: valence cells fire only for US-stamped assemblies
         for (f32& w : ca32val_.weights) w *= 0.02f;
@@ -99,18 +109,26 @@ public:
         refrac_ms_ = 0;
         episodes_ = 0;
         pr_ge_.assign(cfg.n_pr, 0.0f);
+        mossy_ge_.assign(cfg.n_ca3, 0.0f);
+        mossy_trace_.assign(cfg.n_ca3, 0.0f);
+        replay_rng_ = Rng(cfg.seed ^ 0x9E3779B9ull);
+        swr_timer_ms_ = -std::log(std::max(1e-6f, replay_rng_.uniform01())) *
+                        cfg.swr_mean_isi_ms;  // exponential first ISI (ms)
     }
 
     static LifConfig dg_cfg() {
         LifConfig c;
         c.tau_m = 0.012f;
+        c.tau_exc = 0.100f;   // slow integration window: granule cells respond
+                              // to 2+ EC(KC) inputs within ~100ms, not strict
+                              // ms-coincidence (input code is rate-based)
         c.v_thresh = -0.046f;
         return c;
     }
     static LifConfig ca3_cfg() {
         LifConfig c;
         c.tau_m = 0.018f;
-        c.tau_exc = 0.008f;
+        c.tau_exc = 0.030f;   // integrate mossy arrivals over the DG window
         c.v_thresh = -0.036f;
         return c;
     }
@@ -133,6 +151,11 @@ public:
         us_neg_ = punish;
     }
 
+    // dopaminergic feedback into HPC (VTA->CA1/CA3 dopamine axons): reward
+    // events transiently boost SWR rate — replay is directed toward recently
+    // rewarded/rehearsed traces (Gomperts et al. 2024; Ambrose et al. 2016)
+    void notify_reward() { swr_bias_ms_ = 3000; }
+
     // ---- the system, running on the perceptual stream ----------------------
     void step(f32 dt, const u8* kc_pattern) {
         // familiarity trace decays
@@ -140,6 +163,29 @@ public:
         if (refrac_ms_ > 0) --refrac_ms_;
         if (us_pos_ > 0.0f || us_neg_ > 0.0f) {
             if (++us_hold_ms_ > 800) { us_pos_ = 0.0f; us_neg_ = 0.0f; us_hold_ms_ = 0; }
+        }
+
+        // sensory-stream activity tracking: SWR replay happens only in quiet
+        u32 kc_act = 0;
+        for (u32 k = 0; k < n_in_; ++k) kc_act += kc_pattern[k];
+        if (kc_act > 0) quiet_ms_ = 0;
+        else if (quiet_ms_ < 100000) ++quiet_ms_;
+        const bool quiet = (quiet_ms_ > 200);
+
+        // SWR replay oscillator (Buzsaki 2015); reward-biased rate (Gomperts)
+        if (swr_bias_ms_ > 0) swr_bias_ms_ -= static_cast<u32>(dt * 1000.0f) + 1;
+        const f32 isi = (swr_bias_ms_ > 0) ? cfg_.swr_mean_isi_ms * 0.25f
+                                           : cfg_.swr_mean_isi_ms;
+        if (quiet && swr_timer_ms_ > 0.0f) {
+            swr_timer_ms_ -= dt;
+            if (swr_timer_ms_ <= 0.0f) {
+                swr_active_ms_ = static_cast<i32>(cfg_.swr_dur_ms);
+                swr_timer_ms_ = -std::log(std::max(1e-6f, replay_rng_.uniform01())) * isi;
+            }
+        }
+        if (swr_active_ms_ > 0) {
+            ca3_.add_exc_all(cfg_.swr_drive);
+            --swr_active_ms_;
         }
 
         // DG pattern separation
@@ -150,11 +196,21 @@ public:
         dg2ca3_.propagate(dg_.spikes(), ca3_.ge());
         ca3rec_.propagate(ca3_.spikes(), ca3_.ge());
         ca3_.step(dt);
+        // sensory-eligibility trace (mossy-driven cells = current experience)
+        dg2ca3_.propagate(dg_.spikes(), mossy_ge_.data());
+        for (u32 k = 0; k < cfg_.n_ca3; ++k) {
+            if (mossy_ge_[k] > 0.0f) mossy_trace_[k] = 1.0f;
+            mossy_trace_[k] *= std::exp(-dt / 0.300f);
+        }
 
         // valence binding cells (driven by current CA3 assembly)
         ca32val_.propagate(ca3_.spikes(), val_ge_);
         vpos_.add_exc(0, val_ge_[0]);
         vneg_.add_exc(0, val_ge_[1]);
+        // mutual inhibition between opposing valence channels (categorical
+        // winner-take-all; lateral inhibition in valence circuits)
+        vpos_.gi()[0] += 0.060f * static_cast<f32>(vneg_.spikes()[0]);
+        vneg_.gi()[0] += 0.060f * static_cast<f32>(vpos_.spikes()[0]);
         vpos_.step(dt);
         vneg_.step(dt);
         val_pos_total_ += vpos_.spikes()[0];
@@ -194,7 +250,8 @@ public:
         // Frey & Morris 1997; Li et al. 2003).
         const bool us_live = (us_hold_ms_ > 0);
         if (us_refrac_ms_ > 0) --us_refrac_ms_;
-        if (frac > 0.030f && (refrac_ms_ == 0 || (us_live && us_refrac_ms_ == 0))) {
+        if (!quiet && frac > 0.050f &&
+            (refrac_ms_ == 0 || (us_live && us_refrac_ms_ == 0))) {
             encode_event();
             refrac_ms_ = cfg_.enc_refrac_ms;
             us_refrac_ms_ = 500;  // ~one stamp per US event
@@ -216,9 +273,31 @@ public:
         val_neg_total_ = 0;
     }
 
+    // valence-cell spike ports: wire to Brain::drive_vum/drive_dan — a
+    // recalled valence re-drives the neuromodulatory US neurons exactly like
+    // the sugar sensor (predicted-US; Hammer & Menzel 1995). During SWR
+    // replay this is dopamine-at-replay (Gomperts et al. 2015).
+    u8 vpos_drive() const { return vpos_.spikes()[0]; }
+    u8 vneg_drive() const { return vneg_.spikes()[0]; }
     f32 familiarity() const { return familiarity_; }
     f32 novelty() const { return 1.0f - familiarity_; }
     u32 episodes() const { return episodes_; }
+    // measurement accessors (diagnostics: representation overlap analysis)
+    f32 vpos_ge() const { return const_cast<LifLayer&>(vpos_).ge()[0]; }
+    f32 vneg_ge() const { return const_cast<LifLayer&>(vneg_).ge()[0]; }
+    f32 vpos_gi() const { return const_cast<LifLayer&>(vpos_).gi()[0]; }
+    f32 vneg_gi() const { return const_cast<LifLayer&>(vneg_).gi()[0]; }
+    const u8* dg_spikes() const { return dg_.spikes(); }
+    const u8* ca3_spikes() const { return ca3_.spikes(); }
+    u32 n_dg() const { return cfg_.n_dg; }
+    void dg_snapshot(std::vector<u8>& out) const {
+        const u8* sp = dg_.spikes();
+        out.assign(sp, sp + cfg_.n_dg);
+    }
+    void ca3_snapshot(std::vector<u8>& out) const {
+        const u8* sp = ca3_.spikes();
+        out.assign(sp, sp + cfg_.n_ca3);
+    }
     f32 dg_frac() const {
         u32 a = 0;
         const u8* sp = dg_.spikes();
@@ -258,7 +337,10 @@ private:
             const u32 e = ca3rec_.indptr[pre + 1];
             for (u32 k = ca3rec_.indptr[pre]; k < e; ++k) {
                 f32& w = ca3rec_.weights[k];
-                if (w > 0.0005f)  // only EXISTING diluted collaterals
+                // co-active pair only, BOTH sensory-driven (online LTP binds
+                // the current experience; replay-active cells of other
+                // episodes must not cross-bind into it)
+                if (s[ca3rec_.indices[k]] && mossy_trace_[ca3rec_.indices[k]] > 0.3f)
                     w = std::min(cfg_.w_rec_max, w + cfg_.eta_enc);
             }
             // perirhinal stamp: THIS assembly was experienced (one-shot)
@@ -266,14 +348,16 @@ private:
             for (u32 k = ca32pr_.indptr[pre]; k < ep; ++k)
                 ca32pr_.weights[k] = std::min(0.50f, ca32pr_.weights[k] + cfg_.eta_enc);
             // valence binding: only when a US neuromodulatory event accompanied
-            // the episode (VUM/DAN state — set via set_us from world sensors)
-            if (us_pos_ > 0.0f || us_neg_ > 0.0f) {
+            // the episode (VUM/DAN state — set via set_us from world sensors),
+            // and only onto SENSORY-DRIVEN cells (replay-active cells of other
+            // episodes must not receive the stamp)
+            if ((us_pos_ > 0.0f || us_neg_ > 0.0f) && mossy_trace_[pre] > 0.3f) {
                 const u32 ev = ca32val_.indptr[pre + 1];
                 for (u32 k = ca32val_.indptr[pre]; k < ev; ++k) {
                     const u32 target = ca32val_.indices[k];  // 0 = v+, 1 = v-
                     if (((target == 0) ? us_pos_ : us_neg_) > 0.0f)
                         ca32val_.weights[k] =
-                            std::min(0.20f, ca32val_.weights[k] + cfg_.eta_val);
+                            std::min(0.03f, ca32val_.weights[k] + cfg_.eta_val);
                 }
             }
         }
@@ -284,12 +368,18 @@ private:
     LifLayer dg_, ca3_, vpos_, vneg_, pr_;
     std::vector<f32> pr_ge_;
     Synapses kc2dg_, dg2ca3_, ca3rec_, ca32val_, ca32pr_;
+    std::vector<f32> mossy_ge_, mossy_trace_;
     f32 val_ge_[2] = {0.0f, 0.0f};
     f32 familiarity_ = 0.0f;
     f32 us_pos_ = 0.0f, us_neg_ = 0.0f;
     u32 us_hold_ms_ = 0;
     i32 refrac_ms_ = 0;
     i32 us_refrac_ms_ = 0;
+    i32 swr_active_ms_ = 0;
+    f32 swr_timer_ms_ = 0.0f;
+    u32 quiet_ms_ = 100000;
+    i32 swr_bias_ms_ = 0;
+    Rng replay_rng_{1};
     u32 episodes_ = 0;
     u32 val_pos_total_ = 0, val_neg_total_ = 0;
 };

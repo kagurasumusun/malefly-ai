@@ -54,20 +54,35 @@ int run_monkey1(const Monkey1Config& cfg) {
 
     Rng rng(cfg.seed);
     Brain brain(BrainConfig{}, rng);
-    Hippocampus hpc(HippocampusConfig{}, rng, 50);
+    HippocampusConfig hc;
+    hc.seed = cfg.seed;
+    Hippocampus hpc(hc, rng, brain.mb().n_kc());
     Pfc pfc(PfcConfig{}, rng, 50);
 
+    // recalled-valence axons: HPC valence cells -> VUM/DAN (spike->spike).
+    // This is the honeybee predicted-US wiring (Hammer & Menzel 1995) and
+    // the dopamine-at-replay channel (Gomperts et al. 2015): during SWR
+    // replay of rewarded episodes the MB receives the US internally.
+    auto valence_axons = [&]() {
+        if (hpc.vpos_drive()) {
+            brain.drive_vum(1.0f);
+            hpc.notify_reward();   // VUM->HPC dopamine: bias replay to this trace
+        }
+        if (hpc.vneg_drive()) brain.drive_dan(1.0f);
+    };
     auto run = [&](u32 ms) {
         for (u32 t = 0; t < ms; ++t) {
+            hpc.step(DT, brain.mb().kc_spike_pattern());
+            valence_axons();
             brain.step(DT);
-            hpc.step(DT, brain.al().pn_spikes());
         }
     };
     auto present = [&](const Odor& o, u32 ms, bool pfc_binds = false) {
         brain.set_odor(&o, 1.0f);
         for (u32 t = 0; t < ms; ++t) {
+            hpc.step(DT, brain.mb().kc_spike_pattern());
+            valence_axons();
             brain.step(DT);
-            hpc.step(DT, brain.al().pn_spikes());
             pfc.step(DT, brain.al().pn_spikes(), pfc_binds);
         }
     };
@@ -80,7 +95,7 @@ int run_monkey1(const Monkey1Config& cfg) {
             // antennal lobe but keep motor learning unaffected by not
             // applying outcomes)
             brain.step(DT);
-            hpc.step(DT, brain.al().pn_spikes());
+            hpc.step(DT, brain.mb().kc_spike_pattern());
             pfc.step(DT, brain.al().pn_spikes(), binds);
         }
         (void)o;
@@ -88,11 +103,67 @@ int run_monkey1(const Monkey1Config& cfg) {
     auto gap = [&](u32 ms) {
         brain.set_odor(nullptr, 0.0f);
         for (u32 t = 0; t < ms; ++t) {
+            hpc.step(DT, brain.mb().kc_spike_pattern());
+            valence_axons();
             brain.step(DT);
-            hpc.step(DT, brain.al().pn_spikes());
             pfc.step(DT, brain.al().pn_spikes(), false);
         }
     };
+
+    // population-vector collector (driver-side measurement, like an
+    // experimenter's electrode): accumulate PFC spike counts over ms
+    std::vector<u32> tmpl_vec(pfc.size(), 0), probe_vec(pfc.size(), 0);
+    auto collect = [&](std::vector<u32>& v, u32 ms) {
+        brain.set_odor(nullptr, 0.0f);
+        std::fill(v.begin(), v.end(), 0u);
+        for (u32 t = 0; t < ms; ++t) {
+            hpc.step(DT, brain.mb().kc_spike_pattern());
+            valence_axons();
+            brain.step(DT);
+            pfc.step(DT, brain.al().pn_spikes(), false);
+            const u8* ps = pfc.spikes();
+            for (u32 k = 0; k < pfc.size(); ++k) v[k] += ps[k];
+        }
+    };
+
+    // ================= B. episodic one-shot + cued recall =================
+    gap(2000);
+    pfc.clear_assembly();
+    // encode: ONE presentation each, one US each (VUM-like US into HPC).
+    // Forward conditioning: the US overlaps the odor window.
+    hpc.set_us(1.0f, 0.0f);
+    present(od_a, 600);
+    run(300);
+    hpc.set_us(0.0f, 0.0f);
+    u32 vp_dbg = 0, vn_dbg = 0;
+    hpc.read_valence(vp_dbg, vn_dbg);
+    std::printf("  [B] A+ stamp: episodes=%u v+=%u v-=%u\n", hpc.episodes(), vp_dbg, vn_dbg);
+    gap(2500);
+    hpc.set_us(0.0f, 1.0f);
+    present(od_b, 600);
+    run(300);
+    hpc.set_us(0.0f, 0.0f);
+    hpc.read_valence(vp_dbg, vn_dbg);
+    std::printf("  [B] B- stamp: episodes=%u v+=%u v-=%u\n", hpc.episodes(), vp_dbg, vn_dbg);
+    const u32 eps_after_enc = hpc.episodes();
+    gap(cfg.t_gap_s * 1000);
+    // partial-cue recall
+    Odor cue_a = od_a;
+    {
+        // keep 65% of A's glomeruli, zero the rest
+        Rng r(cfg.seed + 9);
+        for (u32 g = 0; g < 50; ++g)
+            if (cue_a.profile[g] > 0.0f && r.bernoulli(1.0f - cfg.cue_frac))
+                cue_a.profile[g] = 0.0f;
+    }
+    u32 vpos_cue = 0, vneg_cue = 0;
+    hpc.read_valence(vpos_cue, vneg_cue);   // clear counters before cue
+    present(cue_a, 400);
+    hpc.read_valence(vpos_cue, vneg_cue);
+    // (recalled v+ re-drives VUM continuously via the valence axon above —
+    // wiring, not a software loop)
+    const f64 completion_quality = hpc.familiarity();
+    const bool valence_recalled = (vpos_cue > vneg_cue);  // A was rewarded
 
     // ================= A. DMS =================
     struct DmsRow {
@@ -136,24 +207,39 @@ int run_monkey1(const Monkey1Config& cfg) {
                     brain.mod().set_for_test_rest(false);
                     pfc.set_gate(1.0f);
                 }
-                gap(300);
-                // probe: behavior = familiarity approach/avoid. Rule:
-                // familiarity must RISE during the probe (the input found the
-                // maintained assembly); threshold is a small epsilon.
-                const f32 fam_before = pfc.familiarity();
-                present(probe, cfg.t_probe_ms, false);
-                // response = match enhancement (Miller & Desimone 1994):
-                // a probe matching the maintained assembly reactivates it
-                // (high fast overlap); a lure does not.
-                const f32 reactivation = pfc.familiarity();
-                const bool resp_match = reactivation > 0.45f;
-                (void)fam_before;
+                // maintained-template window (the memory code at the end of
+                // the delay — this is what the distractor conditions stress)
+                collect(tmpl_vec, 300);
+                // probe response: first 200 ms of probe-evoked population
+                // activity (sensory reactivation + attractor riding)
+                brain.set_odor(&probe, 1.0f);
+                std::fill(probe_vec.begin(), probe_vec.end(), 0u);
+                for (u32 t = 0; t < 200; ++t) {
+                    hpc.step(DT, brain.mb().kc_spike_pattern());
+                    valence_axons();
+                    brain.step(DT);
+                    pfc.step(DT, brain.al().pn_spikes(), false);
+                    const u8* ps = pfc.spikes();
+                    for (u32 k = 0; k < pfc.size(); ++k) probe_vec[k] += ps[k];
+                }
+                present(probe, cfg.t_probe_ms - 200, false);
+                // response = cosine similarity between the probe-evoked
+                // population vector and the maintained template (population
+                // vector decoding; Georges-Francois & Rolls / IT match)
+                f64 dot = 0, nt = 0, np = 0;
+                for (u32 k = 0; k < tmpl_vec.size(); ++k) {
+                    dot += static_cast<f64>(tmpl_vec[k]) * probe_vec[k];
+                    nt += static_cast<f64>(tmpl_vec[k]) * tmpl_vec[k];
+                    np += static_cast<f64>(probe_vec[k]) * probe_vec[k];
+                }
+                const f64 reactivation =
+                    (nt > 0.0 && np > 0.0) ? dot / std::sqrt(nt * np) : 0.0;
+                const bool resp_match = reactivation > 0.30;
                 const bool ok = (resp_match == is_match);
                 correct += ok ? 1u : 0u;
                 char buf[128];
                 std::snprintf(buf, sizeof buf, "%u,%u,%u,%d,%d,%.4f\n", d, cond, rep,
-                              is_match ? 1 : 0, resp_match ? 1 : 0,
-                              static_cast<double>(reactivation));
+                              is_match ? 1 : 0, resp_match ? 1 : 0, reactivation);
                 csv << buf;
                 gap(cfg.t_iti_ms);
             }
@@ -163,46 +249,6 @@ int run_monkey1(const Monkey1Config& cfg) {
         }
     }
     csv.close();
-
-    // ================= B. episodic one-shot + cued recall =================
-    gap(2000);
-    pfc.clear_assembly();
-    // encode: ONE presentation each, one US each (VUM-like US into HPC).
-    // Forward conditioning: the US overlaps the odor window.
-    hpc.set_us(1.0f, 0.0f);
-    present(od_a, 600);
-    run(300);
-    hpc.set_us(0.0f, 0.0f);
-    u32 vp_dbg = 0, vn_dbg = 0;
-    hpc.read_valence(vp_dbg, vn_dbg);
-    std::printf("  [B] A+ stamp: episodes=%u v+=%u v-=%u\n", hpc.episodes(), vp_dbg, vn_dbg);
-    gap(2500);
-    hpc.set_us(0.0f, 1.0f);
-    present(od_b, 600);
-    run(300);
-    hpc.set_us(0.0f, 0.0f);
-    hpc.read_valence(vp_dbg, vn_dbg);
-    std::printf("  [B] B- stamp: episodes=%u v+=%u v-=%u\n", hpc.episodes(), vp_dbg, vn_dbg);
-    const u32 eps_after_enc = hpc.episodes();
-    gap(cfg.t_gap_s * 1000);
-    // partial-cue recall
-    Odor cue_a = od_a;
-    {
-        // keep 65% of A's glomeruli, zero the rest
-        Rng r(cfg.seed + 9);
-        for (u32 g = 0; g < 50; ++g)
-            if (cue_a.profile[g] > 0.0f && r.bernoulli(1.0f - cfg.cue_frac))
-                cue_a.profile[g] = 0.0f;
-    }
-    u32 vpos_cue = 0, vneg_cue = 0;
-    present(cue_a, 600);
-    run(300);
-    hpc.read_valence(vpos_cue, vneg_cue);
-    // internal loop (wired circuits): a recalled v+ event re-drives the
-    // brain's VUM — this is what makes the retrieval below consolidate.
-    if (vpos_cue > 0) brain.drive_vum(1.0f);
-    const f64 completion_quality = hpc.familiarity();
-    const bool valence_recalled = (vpos_cue > vneg_cue);  // A was rewarded
 
     // ================= C. retrieval-practice consolidation =================
     // Control arm first (fresh B-like pair would be cleaner; here we measure
@@ -214,19 +260,15 @@ int run_monkey1(const Monkey1Config& cfg) {
         return r.valence;
     };
     const f64 val_before = mb_probe(od_a) - mb_probe(od_b);
+    // retrieval practice: re-presenting A recalls v+ -> VUM pulses (via the
+    // axon); B recalls v- -> DAN. Consolidation follows from the MB's own
+    // learning — no software delivery of reward.
     for (u32 k = 0; k < cfg.n_practice; ++k) {
         present(od_a, 500);
-        run(300);
-        u32 vp = 0, vn = 0;
-        hpc.read_valence(vp, vn);
-        if (vp > 0) brain.drive_vum(1.0f);   // recalled reward re-drives VUM
         run(300);
         brain.set_sensors(0.0f, 0.0f);
         gap(1500);
         present(od_b, 500);
-        run(300);
-        hpc.read_valence(vp, vn);
-        if (vn > 0) brain.drive_dan(1.0f);
         run(300);
         brain.set_sensors(0.0f, 0.0f);
         gap(1500);

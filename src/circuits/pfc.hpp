@@ -32,22 +32,23 @@ namespace malefly {
 
 struct PfcConfig {
     u32 n_cells = 400;
-    u32 in_fanin = 10;          // KC -> PFC
-    f32 in_quanta = 0.028f;
+    u32 in_fanin = 2;      // coincidence-2 input gate (DG-style decorrelation)          // KC -> PFC
+    f32 in_quanta = 0.008f;  // 1 KC subthreshold, 2 KC suprathreshold
     f32 thresh = -0.058f;       // low-ish: persistent recruitment
     f32 tau_m = 0.040f;         // slow integrator (NMDA-like persistence)
-    f32 tau_exc = 0.030f;       // NMDA-like slow excitation (Wang 2001)
+    f32 tau_exc = 0.060f;       // NMDA-like slow excitation (Wang 2001)
     // E-I feedback (no fixed values: heterogeneous fan-in/weights)
     u32 n_inh = 100;
     u32 e2i_fanin = 24;
     u32 i2e_fanin = 24;
     f32 w_e2i = 0.008f;
     f32 w_i2e = 0.010f;
+    f32 stdp_tau = 0.020f;
 
-    u32 rec_fanin = 16;
+    u32 rec_fanin = 40;
     f32 rec_quanta = 0.0020f;    // naive recurrent weight
     f32 eta_bind = 0.40f;       // one-shot assembly binding at sample time
-    f32 w_rec_max = 0.00025f;
+    f32 w_rec_max = 0.004f;
 
     f32 gate_active = 1.00f;    // top-down protection (arousal/active mode)
     f32 gate_rest = 0.25f;      // rest: distractors write through
@@ -78,6 +79,8 @@ public:
         familiarity_ = 0.0f;
         fam_fast_ = 0.0f;
         sample_ms_ = 0.0f;
+        act_trace_.assign(cfg.n_cells, 0.0f);
+        ffge_.assign(cfg.n_cells, 0.0f);
     }
 
     static LifConfig inh_cfg() {
@@ -91,7 +94,7 @@ public:
         LifConfig c;
         c.tau_m = pc.tau_m;
         c.tau_exc = pc.tau_exc;
-        c.v_thresh = -0.056f;
+        c.v_thresh = -0.060f;
         c.t_refrac = 0.004f;
         return c;
     }
@@ -99,13 +102,21 @@ public:
     void set_gate(f32 g) { gate_ = std::clamp(g, 0.0f, 1.0f); }
 
     void step(f32 dt, const u8* kc_pattern, bool sample_phase) {
-        // sensory drive, gated by top-down protection (distractor filtering)
+        // sensory drive, gated by top-down protection (distractor filtering).
+        // ffge_: slow-decaying feedforward drive trace — marks cells that are
+        // part of the CURRENT stimulus code (binding eligibility, like the
+        // tuned connectivity of Compte 2000: potentiation targets the
+        // stimulus-selective set, not random postsynaptic cells).
         if (kc_pattern && gate_ > 0.0f) {
             std::vector<f32> ge(cfg_.n_cells, 0.0f);
             kc2pfc_.propagate(kc_pattern, ge.data());
-            for (u32 k = 0; k < cfg_.n_cells; ++k)
+            for (u32 k = 0; k < cfg_.n_cells; ++k) {
                 cells_.add_exc(k, ge[k] * gate_);
+                if (ge[k] > 0.0f) ffge_[k] = 1.0f;
+            }
         }
+        for (u32 k = 0; k < cfg_.n_cells; ++k)
+            ffge_[k] *= std::exp(-dt / 0.100f);
         // recurrent maintenance from last step (E->E, NMDA-like)
         rec_.propagate(cells_.spikes(), cells_.ge());
         // E-I feedback: E spikes drive interneurons; interneurons inhibit E
@@ -118,21 +129,36 @@ public:
         u32 act = 0;
         for (u32 k = 0; k < cfg_.n_cells; ++k) act += s[k];
 
+        // spike-time eligibility trace (Bi & Poo 1998: LTP window ~20 ms)
+        for (u32 k = 0; k < cfg_.n_cells; ++k)
+            act_trace_[k] = s[k] ? 1.0f
+                                 : act_trace_[k] * std::exp(-dt / cfg_.stdp_tau);
+
         // one-shot assembly binding during sample presentations. The bound
         // assembly is the stimulus-ONSET response (first ~150 ms: the KC-
         // identity-specific population, before recurrent recruitment spreads
         // the activity) — Funahashi/Bruce/Goldman-Rakic 1989 cue-period
         // selectivity; binding beyond the window would encode the whole
-        // recruited net and destroy stimulus selectivity.
+        // recruited net and destroy stimulus selectivity. Potentiation is
+        // Hebbian with the STDP window: pre fires while post was recently
+        // active (co-active confinement keeps the attractor stimulus-
+        // selective — Compte 2000/Wang 2001).
         if (sample_phase) {
             sample_ms_ += dt;
             if (sample_ms_ <= 0.150f) {
                 for (u32 k = 0; k < cfg_.n_cells; ++k)
-                    assembly_[k] = static_cast<u8>(assembly_[k] | s[k]);
+                    if (s[k] && ffge_[k] > 0.05f)  // stimulus-code members only
+                        assembly_[k] = 1;
                 for (u32 pre = 0; pre < cfg_.n_cells; ++pre) {
                     if (!s[pre]) continue;
                     const u32 e = rec_.indptr[pre + 1];
                     for (u32 k = rec_.indptr[pre]; k < e; ++k) {
+                        const u32 post = rec_.indices[k];
+                        // Hebb + stimulus-code confinement: potentiate only
+                        // onto cells whose drive came from the feedforward
+                        // stimulus representation (identity set)
+                        if (act_trace_[post] < 0.2f || ffge_[post] < 0.05f)
+                            continue;
                         f32& w = rec_.weights[k];
                         w = std::min(cfg_.w_rec_max, w + cfg_.eta_bind);
                     }
@@ -167,6 +193,8 @@ public:
     f32 familiarity() const { return fam_fast_; }   // fast match signal
     f32 familiarity_slow() const { return familiarity_; }
     // measurement accessors (diagnostics only)
+    u32 size() const { return cfg_.n_cells; }
+    const u8* spikes() const { return cells_.spikes(); }
     u32 debug_match_now() const {
         const u8* s = cells_.spikes();
         u32 m = 0;
@@ -174,6 +202,11 @@ public:
         return m;
     }
     u32 debug_assembly_size() const { return assembly_size_; }
+    u32 debug_ffge_marked() const {
+        u32 m = 0;
+        for (f32 g : ffge_) if (g > 0.05f) ++m;
+        return m;
+    }
     f32 debug_inh_frac() const {
         const u8* sp = inh_.spikes();
         u32 a = 0;
@@ -220,6 +253,8 @@ private:
     f32 familiarity_ = 0.0f;
     f32 fam_fast_ = 0.0f;
     f32 sample_ms_ = 0.0f;
+    std::vector<f32> act_trace_;
+    std::vector<f32> ffge_;
     f32 gate_ = 1.0f;
     std::vector<u8> assembly_;
     u32 assembly_size_ = 0;

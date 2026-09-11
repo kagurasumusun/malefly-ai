@@ -1,12 +1,12 @@
 {
   "consolidation": {
-    "gain": 0.0796521008014679,
-    "val_after": 0.06216815114021301,
-    "val_before": -0.017483949661254883
+    "gain": 0.07477614283561707,
+    "val_after": 0.07772055268287659,
+    "val_before": 0.0029444098472595215
   },
   "dms": [
     {
-      "acc": 0.55,
+      "acc": 0.4,
       "cond": 0,
       "delay_ms": 0,
       "n": 20
@@ -18,80 +18,80 @@
       "n": 20
     },
     {
-      "acc": 0.45,
+      "acc": 0.65,
       "cond": 2,
       "delay_ms": 0,
       "n": 20
     },
     {
-      "acc": 0.35,
+      "acc": 0.5,
       "cond": 0,
       "delay_ms": 1000,
       "n": 20
     },
     {
-      "acc": 0.55,
+      "acc": 0.4,
       "cond": 1,
       "delay_ms": 1000,
+      "n": 20
+    },
+    {
+      "acc": 0.65,
+      "cond": 2,
+      "delay_ms": 1000,
+      "n": 20
+    },
+    {
+      "acc": 0.35,
+      "cond": 0,
+      "delay_ms": 2000,
+      "n": 20
+    },
+    {
+      "acc": 0.55,
+      "cond": 1,
+      "delay_ms": 2000,
+      "n": 20
+    },
+    {
+      "acc": 0.5,
+      "cond": 2,
+      "delay_ms": 2000,
       "n": 20
     },
     {
       "acc": 0.45,
-      "cond": 2,
-      "delay_ms": 1000,
-      "n": 20
-    },
-    {
-      "acc": 0.55,
-      "cond": 0,
-      "delay_ms": 2000,
-      "n": 20
-    },
-    {
-      "acc": 0.8,
-      "cond": 1,
-      "delay_ms": 2000,
-      "n": 20
-    },
-    {
-      "acc": 0.5,
-      "cond": 2,
-      "delay_ms": 2000,
-      "n": 20
-    },
-    {
-      "acc": 0.35,
       "cond": 0,
       "delay_ms": 4000,
       "n": 20
     },
     {
-      "acc": 0.55,
+      "acc": 0.45,
       "cond": 1,
       "delay_ms": 4000,
       "n": 20
     },
     {
-      "acc": 0.5,
+      "acc": 0.7,
       "cond": 2,
       "delay_ms": 4000,
       "n": 20
     }
   ],
   "episodic": {
-    "completion_quality": 0.16680826246738434,
-    "episodes": 525,
+    "completion_quality": 0.5000447630882263,
+    "episodes": 2,
     "valence_recalled": true,
     "vneg": 0,
-    "vpos": 193
+    "vpos": 200
   },
   "experiment": "monkey1_primate_benchmarks",
-  "hpc_bound": 61,
-  "pfc_bound": 4687,
+  "hpc_bound": 26519,
+  "pfc_bound": 0,
   "seed": 300,
   "spacing": {
-    "effect": -0.07341903448104858,
-    "val_massed": 0.43593642115592957,
-    "val_spaced": 0.362517386674881
+    "effect": 0.0775805413722992,
+    "val_massed": -0.19191044569015503,
+    "val_spaced": -0.11432990431785583
   }
 }
