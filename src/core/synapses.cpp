@@ -53,17 +53,26 @@ Synapses make_random_fanin_dist(u32 n_pre, u32 n_post, f32 fanin_mean,
     const f32 mu = std::log(std::max(1e-6f, w_mean)) - 0.5f * w_sigma * w_sigma;
     std::vector<std::pair<u32, u32>> edges;
     std::vector<u32> scratch(n_pre);
-    for (u32 i = 0; i < n_pre; ++i) scratch[i] = i;
     for (u32 j = 0; j < n_post; ++j) {
         // per-post fan-in ~ round(N(mean, sd)) clamped — heterogeneous wiring
         const f32 fi = fanin_mean + fanin_sd * rng.normal(0.0f, 1.0f);
         i32 k = static_cast<i32>(fi + 0.5f);
-        k = std::clamp(k, 1, 40);  // [1,40]: coincidence-gated fan-in 2 needed for decorrelation (MICrONS wide ranges)
-        k = std::min<i32>(k, static_cast<i32>(n_pre));
+        k = std::clamp(k, 1, static_cast<i32>(n_pre));
+        // FRESH permutation per post: reusing the scratch across posts made
+        // consecutive posts sample overlapping pre sets (~half the fan-in)
+        // and re-emit duplicate edges — every multi-post circuit was
+        // structurally correlated
+        for (u32 i = 0; i < n_pre; ++i) scratch[i] = i;
         for (i32 m = 0; m < k; ++m) {
+            // partial Fisher-Yates over absolute positions: the clamp must be
+            // against n_pre (an INDEX), not against the remaining count — the
+            // old `idx >= avail` comparison wrapped sampling back into the
+            // already-used front region, producing duplicate edges and
+            // ~halving the effective fan-in on every circuit (found via the
+            // language work; all connectome-derived wiring was affected).
             u32 avail = n_pre - static_cast<u32>(m);
             u32 idx = m + static_cast<u32>(rng.uniform01() * static_cast<f32>(avail));
-            if (idx >= avail) idx = avail - 1;
+            if (idx >= n_pre) idx = n_pre - 1;
             std::swap(scratch[m], scratch[idx]);
             edges.emplace_back(scratch[m], j);
         }

@@ -42,3 +42,21 @@
 - 新皮質の低速統合（Fusi, Drew & Abbott 2005; Benna & Fusi 2016）→ MB のカスケード記憶
 - 皮質階層（Markov 2014 の FLNe 階層、Mesulam）→ 領域間の feedforward/feedback 非対称
 - DMS 用: 再帰結合の安定窓（消滅⇔全募集の間）が極端に狭い。適応項（spike-frequency adaptation）または抑制の時定数再設計が候補。GCAMP 的適応は LIF に未実装
+
+## 言語・社会的学習 (infant1 — AI版サル/赤ちゃんレベル)
+- Saffran, Aslin & Newport 1996 (Science 274:1926) — 8ヶ月児が2分の単調音節列から
+  遷移確率 (TP) で語を分節。L1 統計的語分節の根拠。Aslin 1998 は条件付き確率の
+  真の計算として追試。Hauser 2001 (タマリンでも成立)。
+- Graf Estes et al. 2007 / Hay et al. 2011 — 高TP列はラベル学習に有利: L1 で
+  分節された「語」を L3 の報酬接地に直接接続する設計の根拠。
+- Eliades & Wang 2003 (J Neurophysiol) / 2008 (Nature) — マーモセット A1 の
+  自己発声中の抑制は発声開始の数百 ms 前から始まる (運動前部/CD 起源)。
+  SyllableSensorium の cd_suppress ゲート + 自己音節のケアギバー統計除外。
+- Kuhl 2004 — 社会的ゲーティング (ケアギバー在存で発声増加): social_babble_gain。
+- Frey & Morris 1997 (synaptic tagging) — US 存在中の継続スタンピング設計。
+
+## 工学上の禁止事項 (本ラウンドで追加)
+- 「自我が生まれた」「言葉を理解した」等の断言は禁止。測定されたベンチスコア
+  (L1-L4) のみを報告する。
+- ワイヤリング検証は要求ファンイン ≪ n_pre の疎形状で行う (全結合テストは
+  重複を構造的に検出できない — §13.1 のバグ2参照)。

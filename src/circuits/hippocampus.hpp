@@ -36,13 +36,13 @@ namespace malefly {
 struct HippocampusConfig {
     u64 seed = 42;
     u32 n_dg = 1500;         // dentate granule cells
-    u32 dg_fanin = 6;        // KC -> DG
-    f32 dg_quanta = 0.014f;   // 1 KC subthreshold, 2-KC-in-window suprathreshold
+    u32 dg_fanin = 20;   // richer KC convergence: DG duty is KC-rate-limited        // KC -> DG
+    f32 dg_quanta = 0.022f;   // 1 KC subthreshold, 2-KC-in-window suprathreshold
     f32 dg_thresh = -0.054f; // tuned -> DG active ~2-5% (pattern separation)
 
     u32 n_ca3 = 1200;
     u32 mossy_fanin = 25;    // DG -> CA3 (mossy fibers dominate CA3 drive)
-    f32 mossy_quanta = 0.024f;
+    f32 mossy_quanta = 0.030f;
     f32 ca3_thresh = -0.056f;
 
     u32 ca3_rec_fanin = 60;   // ~5% of n_ca3 (diluted, Rolls 2013)  // diluted recurrent collaterals (Rolls 2013)
@@ -59,6 +59,9 @@ struct HippocampusConfig {
     f32 enc_refrac_ms = 1500;     // min spacing between encode events
 
     // valence binding (CA3 -> valence cells, one-shot)
+    f32 bind_trace_min = 0.05f; // DG-rate-scaled sensory-history gate: post
+                                // sampler fix DG runs very sparse, so the
+                                // per-cell mossy trace peaks ~0.01-0.1
     f32 eta_val = 0.45f;
 
     // perirhinal familiarity readout (Brown & Aggleton 2001): silent-init
@@ -111,6 +114,7 @@ public:
         pr_ge_.assign(cfg.n_pr, 0.0f);
         mossy_ge_.assign(cfg.n_ca3, 0.0f);
         mossy_trace_.assign(cfg.n_ca3, 0.0f);
+        ca3_trace_.assign(cfg.n_ca3, 0.0f);
         replay_rng_ = Rng(cfg.seed ^ 0x9E3779B9ull);
         swr_timer_ms_ = -std::log(std::max(1e-6f, replay_rng_.uniform01())) *
                         cfg.swr_mean_isi_ms;  // exponential first ISI (ms)
@@ -119,7 +123,7 @@ public:
     static LifConfig dg_cfg() {
         LifConfig c;
         c.tau_m = 0.012f;
-        c.tau_exc = 0.100f;   // slow integration window: granule cells respond
+        c.tau_exc = 0.300f;   // slow integration: tuned cells reach coincidence
                               // to 2+ EC(KC) inputs within ~100ms, not strict
                               // ms-coincidence (input code is rate-based)
         c.v_thresh = -0.046f;
@@ -129,7 +133,11 @@ public:
         LifConfig c;
         c.tau_m = 0.018f;
         c.tau_exc = 0.030f;   // integrate mossy arrivals over the DG window
-        c.v_thresh = -0.036f;
+        // threshold sits at ~steady-state mossy drive from a healthy DG:
+        // with restored DG rates (2-3% duty) the per-cell mossy ge accumu-
+        // lates ~0.5, so only cells with above-average fan-in fire — the
+        // assembly becomes a COMPETITION-won subset, not the whole field
+        c.v_thresh = 0.5f;
         return c;
     }
     static LifConfig pr_cfg() {
@@ -140,8 +148,17 @@ public:
     }
     static LifConfig val_cfg() {
         LifConfig c;
-        c.tau_m = 0.020f;
-        c.v_thresh = -0.055f;
+        // fast coincidence detector: tau << assembly timescale so the sparse
+        // DG-CA3 background (a few cells/ms) never accumulates to threshold,
+        // while a recruited assembly (hundreds of cells x ms) drives spikes
+        // at a rate proportional to the weight-carrying active set size
+        c.tau_m = 0.010f;
+        // threshold ABOVE baseline-accumulation: CA3 cells fire at high duty,
+        // so a small cross-episodic residue (tens of cells) only slowly
+        // accumulates while a full recruited assembly saturates instantly —
+        // count-over-window then encodes assembly size (Rolls population
+        // readout compressed into one neuron per sign)
+        c.v_thresh = 2.5f;
         return c;
     }
 
@@ -201,6 +218,8 @@ public:
         for (u32 k = 0; k < cfg_.n_ca3; ++k) {
             if (mossy_ge_[k] > 0.0f) mossy_trace_[k] = 1.0f;
             mossy_trace_[k] *= std::exp(-dt / 0.300f);
+            if (ca3_.spikes()[k]) ca3_trace_[k] = 1.0f;
+            ca3_trace_[k] *= std::exp(-dt / 0.300f);
         }
 
         // valence binding cells (driven by current CA3 assembly)
@@ -208,9 +227,15 @@ public:
         vpos_.add_exc(0, val_ge_[0]);
         vneg_.add_exc(0, val_ge_[1]);
         // mutual inhibition between opposing valence channels (categorical
-        // winner-take-all; lateral inhibition in valence circuits)
-        vpos_.gi()[0] += 0.060f * static_cast<f32>(vneg_.spikes()[0]);
-        vneg_.gi()[0] += 0.060f * static_cast<f32>(vpos_.spikes()[0]);
+        // winner-take-all; lateral inhibition in valence circuits). While a
+        // US is live the gate is OPEN: a first negative episode carries
+        // pre-existing positive weights (shared CA3 residue) but no negative
+        // weights yet — competing then would let stale reward lock out the
+        // stamping channel. Evidence accumulates ungated; the race runs at
+        // READOUT (no US), where both channels carry real weights.
+        const f32 wta = (us_hold_ms_ > 0) ? 0.0f : 0.060f;
+        vpos_.gi()[0] += wta * static_cast<f32>(vneg_.spikes()[0]);
+        vneg_.gi()[0] += wta * static_cast<f32>(vpos_.spikes()[0]);
         vpos_.step(dt);
         vneg_.step(dt);
         val_pos_total_ += vpos_.spikes()[0];
@@ -250,12 +275,21 @@ public:
         // Frey & Morris 1997; Li et al. 2003).
         const bool us_live = (us_hold_ms_ > 0);
         if (us_refrac_ms_ > 0) --us_refrac_ms_;
-        if (!quiet && frac > 0.050f &&
-            (refrac_ms_ == 0 || (us_live && us_refrac_ms_ == 0))) {
-            encode_event();
-            refrac_ms_ = cfg_.enc_refrac_ms;
-            us_refrac_ms_ = 500;  // ~one stamp per US event
-            ++episodes_;
+        if (!quiet && frac > 0.050f) {
+            if (refrac_ms_ == 0) {
+                // full co-activity binding at the one-shot episode cadence;
+                encode_event();
+                encode_valence();
+                refrac_ms_ = cfg_.enc_refrac_ms;
+                us_refrac_ms_ = 40;
+                ++episodes_;
+            } else if (us_live && us_refrac_ms_ == 0) {
+                // while a US is live the VALENCE stamp continues at short
+                // intervals so the whole ongoing assembly gets tagged (one
+                // instantaneous stamp binds only the cells active at that ms)
+                encode_valence();
+                us_refrac_ms_ = 40;
+            }
         }
 
         // slow heterosynaptic homeostasis ( Roll's LTD term)
@@ -294,6 +328,26 @@ public:
         const u8* sp = dg_.spikes();
         out.assign(sp, sp + cfg_.n_dg);
     }
+    f32 dbg_mossy_max() const { f32 m=0; for(f32 x: mossy_trace_) if(x>m) m=x; return m; }
+    f32 dbg_vge(u32 sign) { return (sign? vneg_ : vpos_).ge()[0]; }
+    u32 dbg_valn(u32 sign) const {  // # CA3 cells carrying ANY weight to sign
+        u32 n=0;
+        for (u32 pre=0; pre<cfg_.n_ca3; ++pre){
+            const u32 e=ca32val_.indptr[pre+1];
+            for(u32 k=ca32val_.indptr[pre];k<e;++k)
+                if(ca32val_.indices[k]==sign && ca32val_.weights[k]>1e-6f){++n;break;}
+        }
+        return n;
+    }
+    f64 dbg_valw(u32 sign) const {  // total CA3->valence weight (sign 0=+, 1=-)
+        f64 sum=0;
+        for (u32 pre=0; pre<cfg_.n_ca3; ++pre){
+            const u32 e=ca32val_.indptr[pre+1];
+            for(u32 k=ca32val_.indptr[pre];k<e;++k)
+                if(ca32val_.indices[k]==sign) sum+=ca32val_.weights[k];
+        }
+        return sum;
+    }
     void ca3_snapshot(std::vector<u8>& out) const {
         const u8* sp = ca3_.spikes();
         out.assign(sp, sp + cfg_.n_ca3);
@@ -329,6 +383,10 @@ private:
     // Synapses are CSR (rows = presynaptic id): iterate ACTIVE PRESYNAPTIC
     // cells and strengthen their outgoing synapses (co-activity = pre fires
     // while the assembly is up; postsynaptic cells are the active set).
+    // one-shot Hebbian binding among co-active CA3 cells + valence cells.
+    // Synapses are CSR (rows = presynaptic id): iterate ACTIVE PRESYNAPTIC
+    // cells and strengthen their outgoing synapses (co-activity = pre fires
+    // while the assembly is up; postsynaptic cells are the active set).
     void encode_event() {
         const u8* s = ca3_.spikes();
         for (u32 pre = 0; pre < cfg_.n_ca3; ++pre) {
@@ -347,17 +405,29 @@ private:
             const u32 ep = ca32pr_.indptr[pre + 1];
             for (u32 k = ca32pr_.indptr[pre]; k < ep; ++k)
                 ca32pr_.weights[k] = std::min(0.50f, ca32pr_.weights[k] + cfg_.eta_enc);
-            // valence binding: only when a US neuromodulatory event accompanied
-            // the episode (VUM/DAN state — set via set_us from world sensors),
-            // and only onto SENSORY-DRIVEN cells (replay-active cells of other
-            // episodes must not receive the stamp)
-            if ((us_pos_ > 0.0f || us_neg_ > 0.0f) && mossy_trace_[pre] > 0.3f) {
+        }
+    }
+
+    // valence-only pass: cheap, runs at the short US cadence (no recurrent
+    // or perirhinal growth — those stay at the one-shot episode cadence)
+    void encode_valence() {
+        const u8* s = ca3_.spikes();
+        for (u32 pre = 0; pre < cfg_.n_ca3; ++pre) {
+            // valence binding: recent-assembly membership (spike trace) —
+            // covers the whole episode's assembly, not just cells spiking at
+            // the encode instant, and stays EPISODE-SPECIFIC (mossy delivery
+            // luck would stamp the same high-fan-in cells in every episode)
+            if ((us_pos_ > 0.0f || us_neg_ > 0.0f) &&
+                ca3_trace_[pre] > 0.1f) {
                 const u32 ev = ca32val_.indptr[pre + 1];
                 for (u32 k = ca32val_.indptr[pre]; k < ev; ++k) {
                     const u32 target = ca32val_.indices[k];  // 0 = v+, 1 = v-
                     if (((target == 0) ? us_pos_ : us_neg_) > 0.0f)
+                        // small cap: the readout must stay in its linear
+                        // range so channel DRIVE scales with the number of
+                        // stamped, active cells (saturated channels tie)
                         ca32val_.weights[k] =
-                            std::min(0.03f, ca32val_.weights[k] + cfg_.eta_val);
+                            std::min(0.006f, ca32val_.weights[k] + cfg_.eta_val);
                 }
             }
         }
@@ -368,7 +438,7 @@ private:
     LifLayer dg_, ca3_, vpos_, vneg_, pr_;
     std::vector<f32> pr_ge_;
     Synapses kc2dg_, dg2ca3_, ca3rec_, ca32val_, ca32pr_;
-    std::vector<f32> mossy_ge_, mossy_trace_;
+    std::vector<f32> mossy_ge_, mossy_trace_, ca3_trace_;
     f32 val_ge_[2] = {0.0f, 0.0f};
     f32 familiarity_ = 0.0f;
     f32 us_pos_ = 0.0f, us_neg_ = 0.0f;

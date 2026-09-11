@@ -11,6 +11,7 @@
 #include "experiments/goal3.hpp"
 #include "experiments/emerge0.hpp"
 #include "experiments/monkey1.hpp"
+#include "experiments/infant1.hpp"
 #include "experiments/pci.hpp"
 
 #include <cstdio>
@@ -67,6 +68,7 @@ void usage() {
                  "  malefly goal3 [--seed N] [--trials N] [--reversal N] [--back N] "
                  "[--no-rpe] [--no-arousal] [--no-taxonomy] [--tag T]\n"
                  "  malefly monkey1 [--seed N]\n"
+                 "  malefly infant1 [--seed N] [--out F]\n"
                  "  malefly emerge0 [--seed N] [--empty-ms N] [--odor-ms N]\n"
                  "  malefly pci [--seed N] [--out results/pci.json]\n"
                  "  malefly calib [--seed N] [--pres N] [--kc-quanta F] "
@@ -141,6 +143,17 @@ int main(int argc, char** argv) {
         return run_goal3(cfg);
     }
 
+    if (cmd == "infant1") {
+        Infant1Config icfg;
+        // flags: --seed N --out F
+        for (int i = 2; i < argc; ++i) {
+            const std::string a = argv[i];
+            if (a == "--seed" && i + 1 < argc)
+                icfg.seed = static_cast<u64>(std::strtoul(argv[++i], nullptr, 10));
+            else if (a == "--out" && i + 1 < argc) icfg.out = argv[++i];
+        }
+        return run_infant1(icfg);
+    }
     if (cmd == "monkey1") {
         Monkey1Config cfg;
         for (int i = 2; i < argc; ++i) {
