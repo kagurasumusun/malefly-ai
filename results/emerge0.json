@@ -1,0 +1,17 @@
+{
+  "empty_world": {
+    "bins": 60,
+    "motor_bouts": 46,
+    "rest_bins": 15
+  },
+  "experiment": "emerge0_spontaneous_behavior",
+  "odor_world_no_outcome": {
+    "approach_net": 785,
+    "bins": 60,
+    "motor_bouts": 60,
+    "rest_bins": 1
+  },
+  "rest_switches": 4,
+  "seed": 5,
+  "side_switches": 3
+}

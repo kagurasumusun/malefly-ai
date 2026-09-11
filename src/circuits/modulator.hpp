@@ -33,8 +33,8 @@ struct ModulatorConfig {
 
     // slow behavioral-mode network (DMN/ZBrain adoption; ablatable)
     bool modes_enabled = true;
-    f32 mode_rest_hz = 0.02f;          // active -> rest (mean episode 50 s)
-    f32 mode_active_hz = 0.05f;        // rest -> active (shortened by arousal)
+    f32 mode_rest_hz = 0.06f;          // active -> rest (mean episode ~17 s)
+    f32 mode_active_hz = 0.12f;        // rest -> active (shortened by arousal)
     f32 mode_arousal_coupling = 3.0f;  // arousal multiplies wake-up rate
 };
 

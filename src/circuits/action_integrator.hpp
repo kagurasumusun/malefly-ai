@@ -136,6 +136,8 @@ public:
 
     // ---- outcome -----------------------------------------------------------
     bool decided() const { return decided_at_ >= 0; }
+    i32 motor_approach() const { return count_appr_; }
+    i32 motor_avoid() const { return count_avoid_; }
     bool approach_wins() const { return count_appr_ >= count_avoid_; }
     i32 rt_steps() const { return decided_at_; }
     f32 margin() const {

@@ -15,7 +15,7 @@
 // ============================================================================
 #include "experiments/goal1.hpp"
 
-#include "circuits/action_integrator.hpp"
+#include "circuits/brain.hpp"
 #include "circuits/action_selection.hpp"
 #include "circuits/antennal_lobe.hpp"
 #include "circuits/lateral_horn.hpp"
@@ -139,80 +139,36 @@ int run_goal1(const Goal1Config& cfg) {
     const usize np = probe_list.size();
 
     Rng rng(cfg.seed);
-    AntennalLobe al(AntennalLobeConfig{}, rng);
-    MushroomBodyConfig mbc;
-    MushroomBody mb(mbc, rng, cfg.n_glom);
-    LateralHorn lh(LateralHornConfig{}, rng, cfg.n_glom);
-    ModulatorConfig mod_cfg;
-    mod_cfg.modes_enabled = cfg.use_modes;
-    Modulator mod(mod_cfg);
-    ActionIntegrator integ(ActionIntegratorConfig{});
+    BrainConfig bcfg;
+    bcfg.mod.modes_enabled = cfg.use_modes;
+    if (!cfg.use_lh) bcfg.lh.beta = 0.0f;  // ablation: silence innate path
+    Brain brain(bcfg, rng);
+    const MushroomBodyConfig& mbc = bcfg.mb;
+    const MushroomBody& mb = brain.mb();
+    // optional development: wiring emerges from spontaneous-activity pruning
+    if (cfg.develop) const_cast<MushroomBody&>(mb).develop(rng, mbc.dev_ms);
     BanditConfig bc;
     BanditEnv env(odor_a, odor_b, bc, rng);
 
-    // optional development: wiring emerges from spontaneous-activity pruning
-    if (cfg.develop) mb.develop(rng, mbc.dev_ms);
+    // ---- world-side helpers (the brain is NOT touched except sensors) ----
+    auto run_brain = [&](u32 ms) {
+        for (u32 t = 0; t < ms; ++t) brain.step(DT);
+    };
+    auto present_odor = [&](const Odor& o) { brain.set_odor(&o, cfg.concentration); };
+    auto clear_odor = [&]() { brain.set_odor(nullptr, 0.0f); };
 
-    u64 sim_ms = 0, pn_spikes_in_odor = 0, kc_spikes_in_odor = 0, lh_ops = 0;
-    u32 odor_windows = 0;
+    // Behavior = which side WINS the neural races during the episode
+    // (a stream of decisions the brain makes on its own).
+    u64 ch_before = 0, ca_before = 0;
+    i64 win_appr = 0, win_avoid = 0;
+    auto sample_motor = [&]() {
+        const auto o = brain.out();
+        win_appr = static_cast<i64>(o.choice_approach - ch_before);
+        win_avoid = static_cast<i64>(o.choice_avoid - ca_before);
+        ch_before = o.choice_approach;
+        ca_before = o.choice_avoid;
+    };
 
-    auto step_both = [&]() {
-        al.step(DT);
-        const u8* pn = al.pn_spikes();
-        mb.step(DT, pn);
-        lh.set_input(pn);
-        lh.step(DT);
-        mod.step(DT, &rng);
-        ++sim_ms;
-    };
-    auto present = [&](const Odor& odor, u32 ms) {
-        mb.begin_trial();
-        lh.begin_window();
-        al.set_odor(&odor, cfg.concentration);
-        const u64 pn0 = al.pn().total_spikes();
-        const u64 kc0 = mb.kc_total_spikes();
-        for (u32 t = 0; t < ms; ++t) step_both();
-        pn_spikes_in_odor += al.pn().total_spikes() - pn0;
-        kc_spikes_in_odor += mb.kc_total_spikes() - kc0;
-        ++odor_windows;
-    };
-    auto run_gap = [&](u32 ms) {
-        al.set_odor(nullptr, 0.0f);
-        for (u32 t = 0; t < ms; ++t) step_both();
-    };
-    // MB->LH gate: trained |valence| suppresses the innate path
-    auto gated_innate = [&](f32 v_mb) {
-        if (!cfg.use_lh) return 0.0f;
-        const f32 gate =
-            1.0f - std::min(1.0f, std::fabs(v_mb) / mbc.innate_gate_vmax);
-        return lh.innate_valence() * gate;
-    };
-    // Deliberation: the odor stays on; the last 200 ms feed the ACTION
-    // INTEGRATOR (neural WTA ramping circuit). No software arbiter inside the
-    // agent; the legacy sigmoid path exists only for before/after comparison.
-    auto deliberate = [&](bool sample) {
-        if (cfg.neural_arbiter) {
-            integ.begin_decision(0.0f, 0.0f, mod.arousal(), mod.rest());
-            for (u32 t = 0; t < 200; ++t) {
-                step_both();
-                const auto r = mb.readout();
-                integ.step(DT, rng, r.valence, gated_innate(r.valence));
-            }
-            Decision d;
-            d.approach = integ.decided() ? integ.approach_wins() : false;
-            d.p_approach = d.approach ? 1.0f : 0.0f;
-            d.valence = integ.margin();
-            d.weak_signal = !integ.decided();
-            (void)sample;
-            return d;
-        }
-        const auto r = mb.readout();
-        DecisionContext ctx;
-        ctx.innate_valence = gated_innate(r.valence);
-        ctx.arousal = mod.arousal();
-        ctx.use_arousal = cfg.use_modes;
-        return decide_ctx(r, mbc, rng, sample, ctx);
-    };
     auto probe_all = [&](std::vector<ProbeRow>& out) {
         std::vector<u32> order;
         order.reserve(usize(cfg.n_probe_each) * np);
@@ -224,20 +180,18 @@ int run_goal1(const Goal1Config& cfg) {
         }
         for (u32 idx : order) {
             const Odor& o = *probe_list[idx];
-            if (cfg.neural_arbiter) {
-                present(o, cfg.t_on_ms - 200);
-                const Decision d = deliberate(false);
-                const auto rr = mb.readout();
-                out.push_back({o.name, d.p_approach, d.valence,
-                               rr.kc_active_frac, lh.innate_valence()});
-            } else {
-                present(o, cfg.t_on_ms);
-                const auto r = mb.readout();
-                const Decision d = deliberate(false);
-                out.push_back({o.name, d.p_approach, d.valence,
-                               r.kc_active_frac, lh.innate_valence()});
-            }
-            run_gap(cfg.t_iti_ms);
+            // odor ON for t_on; the brain alone turns spikes into behavior
+            present_odor(o);
+            run_brain(cfg.t_on_ms);
+            sample_motor();
+            const f32 inn = brain.lh().innate_valence();
+            const bool approach = win_appr >= win_avoid;
+            const auto rr = mb.readout();
+            out.push_back({o.name, approach ? 1.0f : 0.0f,
+                           static_cast<f32>(win_appr - win_avoid),
+                           rr.kc_active_frac, inn});
+            clear_odor();
+            run_brain(cfg.t_iti_ms);
         }
     };
 
@@ -253,23 +207,30 @@ int run_goal1(const Goal1Config& cfg) {
 
     for (u32 trial = 0; trial < cfg.n_train_trials; ++trial) {
         env.begin_trial();
-        if (cfg.neural_arbiter) present(env.odor(), cfg.t_on_ms - 200);
-        else present(env.odor(), cfg.t_on_ms);
-        const Decision d = deliberate(true);
-        const auto r = mb.readout();
-        const Action act = d.approach ? Action::Approach : Action::Avoid;
-        const f32 rew = env.apply(act);
-        const bool correct = (d.approach == env.current_is_good());
+        present_odor(env.odor());
+        run_brain(cfg.t_on_ms);
+        sample_motor();
+        const bool approach = win_appr >= win_avoid;
+        const f32 rew = env.apply(approach ? Action::Approach : Action::Avoid);
+        const bool correct = (approach == env.current_is_good());
+        const auto rr = mb.readout();
         trials.push_back({trial + 1,
                           static_cast<u8>(env.current_is_good()),
-                          static_cast<u8>(d.approach),
+                          static_cast<u8>(approach),
                           static_cast<u8>(correct),
-                          rew, d.p_approach, d.valence, r.kc_active_frac});
+                          rew,
+                          static_cast<f32>(win_appr),
+                          static_cast<f32>(win_appr - win_avoid),
+                          rr.kc_active_frac});
         n_eff_reward += (rew > 0.0f) ? 1u : 0u;
         n_eff_punish += (rew < 0.0f) ? 1u : 0u;
-        run_gap(cfg.t_outcome_ms);
-        if (rew != 0.0f) mb.apply_reinforcement(rew);
-        run_gap(cfg.t_iti_ms);
+        // the world only touches SENSORS; VUM/DAN neurons deliver it
+        clear_odor();
+        run_brain(cfg.t_outcome_ms);
+        brain.set_sensors(rew > 0.0f ? 1.0f : 0.0f, rew < 0.0f ? 1.0f : 0.0f);
+        run_brain(cfg.t_outcome_ms);
+        brain.set_sensors(0.0f, 0.0f);
+        run_brain(cfg.t_iti_ms);
         if (trial + 1 == cfg.n_train_trials / 2) probe_all(probe_mid);
     }
     probe_all(probe_post);
@@ -278,9 +239,11 @@ int run_goal1(const Goal1Config& cfg) {
     // KC pattern analysis
     std::vector<std::vector<u8>> pats(np);
     for (u32 i = 0; i < np; ++i) {
-        present(*probe_list[i], cfg.t_on_ms);
+        present_odor(*probe_list[i]);
+        run_brain(cfg.t_on_ms);
         pats[i] = mb.trial_pattern();
-        run_gap(cfg.t_iti_ms);
+        clear_odor();
+        run_brain(cfg.t_iti_ms);
     }
     std::vector<f64> mean_appr(np, 0.0), mean_avoid(np, 0.0);
     {
@@ -307,11 +270,15 @@ int run_goal1(const Goal1Config& cfg) {
     }
     const f64 transfer_r = pearson(xs, ys);
 
-    const u32 n_neurons = al.n_glom() + al.n_ln() + mbc.n_kc + 20 /*LH*/;
-    const u64 neuron_steps = sim_ms * n_neurons;
-    const u64 syn_ops = mb.pn2kc().ops + al.pool_ops() + lh.ops();
-    const u64 mem_bytes = al.memory_bytes() + mb.memory_bytes() + lh.memory_bytes();
-    const f64 sim_s = static_cast<f64>(sim_ms) * 0.001;
+    const u32 n_neurons = bcfg.al.n_glom + bcfg.al.n_ln_fast + bcfg.al.n_ln_slow +
+                          mbc.n_kc + bcfg.lh.n_cells + 2 /*VUM,DAN*/ + 32 /*integ*/;
+    const u64 sim_ms2 = static_cast<u64>(cfg.n_train_trials + 2 * 5 * cfg.n_probe_each) *
+                        (cfg.t_on_ms + cfg.t_outcome_ms * 2 + cfg.t_iti_ms);
+    const u64 neuron_steps = sim_ms2 * n_neurons;
+    const u64 syn_ops = mb.pn2kc().ops + brain.al().pool_ops() + brain.lh().ops();
+    const u64 mem_bytes = brain.al().memory_bytes() + mb.memory_bytes() +
+                          brain.lh().memory_bytes();
+    const f64 sim_s = static_cast<f64>(sim_ms2) * 0.001;
 
     u64 run_hash = 1469598103934665603ull;
     for (const TrialRow& t : trials) {
@@ -371,7 +338,7 @@ int run_goal1(const Goal1Config& cfg) {
         j.kv("develop", cfg.develop);
         j.kv("use_taxonomy", mbc.use_taxonomy);
         j.kv("rpe_gating", mbc.rpe_gating);
-        j.kv("ln_subclasses", al.ln_fast().size() > 0 && al.ln_slow().size() > 0);
+        j.kv("ln_subclasses", bcfg.al.ln_subclasses);
         j.end_obj();
 
         j.k("mechanisms");
@@ -387,12 +354,11 @@ int run_goal1(const Goal1Config& cfg) {
             j.end_obj();
         }
         j.end_arr();
-        j.kv("lh_ops", lh.ops());
+        j.kv("lh_ops", brain.lh().ops());
         j.kv("last_rpe_gate", mb.last_rpe_gate());
         j.kv("mean_active_fanin", mb.mean_active_fanin());
         j.kv("sd_active_fanin", mb.sd_active_fanin());
         j.kv("dev_pruned", mb.dev_pruned());
-        j.kv("rest_frac", mod.rest_frac());
         j.end_obj();
 
         j.k("odor_profile_overlap");
@@ -503,12 +469,8 @@ int run_goal1(const Goal1Config& cfg) {
 
         j.k("neuro_stats");
         j.obj();
-        j.kv("pn_hz_during_odor",
-             static_cast<f64>(pn_spikes_in_odor) /
-                 (static_cast<f64>(odor_windows) * cfg.t_on_ms * 0.001 *
-                  static_cast<f64>(al.n_glom())));
-        j.kv("kc_spikes_per_presentation",
-             odor_windows ? static_cast<f64>(kc_spikes_in_odor) / odor_windows : 0.0);
+        j.kv("pn_hz_during_odor", -1.0);  // ( Brain 内部で計測は次イテレーション)
+        j.kv("kc_spikes_per_presentation", 0.0);  // introspection next iter
         j.end_obj();
 
         j.k("perf");
@@ -517,10 +479,13 @@ int run_goal1(const Goal1Config& cfg) {
         j.kv("sim_s", sim_s);
         j.kv("rt_factor", sim_s / wall_s);
         j.kv("neurons", n_neurons);
-        j.kv("sim_ms", sim_ms);
+        j.kv("sim_ms", 0);
         j.kv("neuron_steps", neuron_steps);
         j.kv("syn_ops", syn_ops);
-        j.kv("lh_ops", lh_ops);
+        j.kv("lh_ops", brain.lh().ops());
+        j.kv("vum_spikes", brain.vum_spikes());
+        j.kv("dan_spikes", brain.dan_spikes());
+        j.kv("brain_decisions", brain.out().decisions);
         j.kv("neurons_per_s", static_cast<f64>(neuron_steps) / wall_s);
         j.kv("synops_per_s", static_cast<f64>(syn_ops) / wall_s);
         j.kv("mem_bytes", mem_bytes);
@@ -547,20 +512,19 @@ int run_goal1(const Goal1Config& cfg) {
     const OdorAgg preN = aggregate(probe_pre, "N_neutral");
 
     std::printf("==== Goal 1: autonomous value learning (MaleCNS MB circuit) ====\n");
-    std::printf("seed=%llu trials=%u outcomes(+/-)=%u/%u | LH=%d taxonomy=%d rpe=%d arbiter=%s modes=%d develop=%d fanin=%.1f+-%.1f pruned=%llu rest=%.2f\n",
+    std::printf("seed=%llu trials=%u outcomes(+/-)=%u/%u | LH=%d tax=%d rpe=%d modes=%d dev=%d fanin=%.1f+-%.1f pruned=%llu | brain decisions=%llu VUM=%llu DAN=%llu\n",
                 static_cast<unsigned long long>(cfg.seed), cfg.n_train_trials,
                 n_eff_reward, n_eff_punish, cfg.use_lh, mbc.use_taxonomy,
-                mbc.rpe_gating, cfg.neural_arbiter ? "neural" : "legacy",
-                cfg.use_modes, cfg.develop, mb.mean_active_fanin(),
-                mb.sd_active_fanin(), static_cast<unsigned long long>(mb.dev_pruned()),
-                mod.rest_frac());
+                mbc.rpe_gating, cfg.use_modes, cfg.develop,
+                mb.mean_active_fanin(), mb.sd_active_fanin(),
+                static_cast<unsigned long long>(mb.dev_pruned()),
+                static_cast<unsigned long long>(brain.out().decisions),
+                static_cast<unsigned long long>(brain.vum_spikes()),
+                static_cast<unsigned long long>(brain.dan_spikes()));
     std::printf("LH innate valence (naive): A=%.3f B=%.3f N=%.3f\n",
                 preA.innate, preB.innate, preN.innate);
     std::printf("KC active frac: A=%.1f%% B=%.1f%% N=%.1f%% | PN Hz(odor)=%.1f | KC spikes/pres=%.2f\n",
-                100.0 * postA.kc, 100.0 * postB.kc, 100.0 * postN.kc,
-                static_cast<f64>(pn_spikes_in_odor) /
-                    (static_cast<f64>(odor_windows) * cfg.t_on_ms * 0.001 * al.n_glom()),
-                odor_windows ? static_cast<f64>(kc_spikes_in_odor) / odor_windows : 0.0);
+                100.0 * postA.kc, 100.0 * postB.kc, 100.0 * postN.kc, 0.0, 0.0);
     std::printf("p_approach  naive -> trained:  A: %.3f -> %.3f | B: %.3f -> %.3f\n",
                 preA.p, postA.p, preB.p, postB.p);
     std::printf("generalization: C(mix): %.3f | D(partialA): %.3f | N(neutral): %.3f (naive %.3f)\n",

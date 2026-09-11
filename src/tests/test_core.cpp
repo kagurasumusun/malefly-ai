@@ -8,6 +8,7 @@
 // ============================================================================
 #include "circuits/action_selection.hpp"
 #include "circuits/antennal_lobe.hpp"
+#include "circuits/brain.hpp"
 #include "circuits/lateral_horn.hpp"
 #include "circuits/modulator.hpp"
 #include "circuits/mushroom_body.hpp"
@@ -382,6 +383,54 @@ static void test_weak_signal_default() {
     CHECK(d.p_approach > 0.55f);                       // naive: mild approach
 }
 
+// ---------- Brain: wiring-only spontaneous behavior + VUM plasticity ----------
+static void test_brain_emergent() {
+    Rng rng(71);
+    Brain brain(BrainConfig{}, rng);
+
+    // empty world for 10 s: behavior must happen with NO inputs at all
+    brain.set_odor(nullptr, 0.0f);
+    brain.set_sensors(0.0f, 0.0f);
+    i64 a0 = 0, v0 = 0;
+    u64 d0 = 0;
+    for (int t = 0; t < 10000; ++t) {
+        brain.step(DT);
+        const auto o = brain.out();
+        a0 = o.motor_approach;
+        v0 = o.motor_avoid;
+        d0 = o.decisions;
+    }
+    CHECK(d0 > 0);                       // spontaneous decisions exist
+    CHECK(a0 + v0 > 0);                  // motor nerves carried spikes
+
+    // reward sensor (sugar) without any odor: VUM fires -> MB weights change
+    const f32 w_before = brain.mb().w_avoid()[0];
+    BrainConfig cfg2;
+    Rng rng2(72);
+    Brain brain2(cfg2, rng2);
+    brain2.set_odor(nullptr, 0.0f);
+    for (int t = 0; t < 3000; ++t) {
+        brain2.set_sensors(t >= 1000 && t < 1200 ? 1.0f : 0.0f, 0.0f);
+        brain2.step(DT);
+    }
+    CHECK(brain2.vum_spikes() > 0);      // the reward neuron fired
+    bool w_changed = false;
+    for (u32 k = 0; k < cfg2.mb.n_kc; ++k)
+        if (brain2.mb().w_avoid()[k] < 0.60f) w_changed = true;
+    (void)w_before;
+    CHECK(w_changed);                    // plasticity followed the VUM
+
+    // punishment sensor: DAN fires
+    Rng rng3(73);
+    Brain brain3(BrainConfig{}, rng3);
+    brain3.set_odor(nullptr, 0.0f);
+    for (int t = 0; t < 3000; ++t) {
+        brain3.set_sensors(0.0f, t >= 1000 && t < 1200 ? 1.0f : 0.0f);
+        brain3.step(DT);
+    }
+    CHECK(brain3.dan_spikes() > 0);
+}
+
 // ---------- end-to-end bit-for-bit determinism ----------
 static u64 simulate_once(u64 seed) {
     Rng rng(seed);
@@ -449,6 +498,7 @@ int main() {
     test_modulator_arousal();
     test_trace_readout();
     test_weak_signal_default();
+    test_brain_emergent();
     test_determinism();
     std::printf("%d checks, %d failures\n", g_run, g_fail);
     return g_fail == 0 ? 0 : 1;

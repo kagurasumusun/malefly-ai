@@ -9,6 +9,7 @@
 #include "experiments/goal1.hpp"
 #include "experiments/goal2.hpp"
 #include "experiments/goal3.hpp"
+#include "experiments/emerge0.hpp"
 #include "experiments/pci.hpp"
 
 #include <cstdio>
@@ -64,6 +65,7 @@ void usage() {
                  "[--out results/goal1.json] [--csv results/goal1.csv]\n"
                  "  malefly goal3 [--seed N] [--trials N] [--reversal N] [--back N] "
                  "[--no-rpe] [--no-arousal] [--no-taxonomy] [--tag T]\n"
+                 "  malefly emerge0 [--seed N] [--empty-ms N] [--odor-ms N]\n"
                  "  malefly pci [--seed N] [--out results/pci.json]\n"
                  "  malefly calib [--seed N] [--pres N] [--kc-quanta F] "
                  "[--kc-theta F] [--apl-gain F]\n");
@@ -135,6 +137,22 @@ int main(int argc, char** argv) {
             else { usage(); return 2; }
         }
         return run_goal3(cfg);
+    }
+
+    if (cmd == "emerge0") {
+        Emerge0Config cfg;
+        for (int i = 2; i < argc; ++i) {
+            u64 s = cfg.seed;
+            u32 e = cfg.empty_ms, o = cfg.odor_ms;
+            std::string oj = cfg.out_json, c = cfg.out_csv;
+            if (flag_u64(argv, argc, i, "--seed", s)) cfg.seed = s;
+            else if (flag_u32(argv, argc, i, "--empty-ms", e)) cfg.empty_ms = e;
+            else if (flag_u32(argv, argc, i, "--odor-ms", o)) cfg.odor_ms = o;
+            else if (flag_str(argv, argc, i, "--out", oj)) cfg.out_json = oj;
+            else if (flag_str(argv, argc, i, "--csv", c)) cfg.out_csv = c;
+            else { usage(); return 2; }
+        }
+        return run_emerge0(cfg);
     }
 
     if (cmd == "pci") {

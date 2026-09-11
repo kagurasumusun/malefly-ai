@@ -79,6 +79,18 @@
 
 すべて「実装結果 = 成立」ではなく、ROADMAP E 段階の各判定基準で測定する。
 
+## 6b. 追加統合源(第二陣、ユーザ指定)
+
+| 源 | 採用内容 | 状態 |
+|---|---|---|
+| Honeybee Connectome / insectbraindb | **VUMmx1 単一報酬ニューロン原理**(糖センサ→オクトパミン神経→MB 可塑性。1 ニューロンの活動が US そのもの) | **実装・実測**(brain.hpp。 emerge0 で静寂性、Goal1 で学習駆動を確認) |
+| MICrONS(mouse visual cortex) | 重みの対数正規・ヘビーテール分布、fan-in 不均一 | **実装**(PN→KC lognormal σ=0.30, fan-in 7±1.6) |
+| DMN(デフォルトモード網様体) | rest/task 反・相関の遅い状態切替 | **実装**(Modulator mode network、emerge0 で自然切替 4 回を測定) |
+| ZBrain(ゼブラフィッシュ全脳) | 運動前の ramping-to-bound、行動変異の神経起源、無為誘発受動状態 | **実装**(ActionIntegrator のレーシング+rest モードの受動性) |
+| Mice Social Brain(視床下部状態ゲート) | 内部状態が接近/回避を反転させる原理 | 部分実装(rest モードが駆動を減衰)。社会的刺激は Goal 4 |
+| The Virtual Brain(EBRAINS) | 領域グラフ(構造的接続行列)上の巨視的動態 | 設計(Brain=領域グラフの実装開始。AL/LH/MB/Mod/Integrator/VUM/DAN が既にノード) |
+| llT / IIT 系計測論 | PCI 型摂動複雑性計測(意識の主張ではなく計器) | **実装**(pci コマンド。 APL×5 の sleepy 対照付き) |
+
 ## 7. 統合のルール(このリポジトリ内での決定手順)
 
 1. 機構候補を挙げる(どのプロジェクト由来か明記)。
