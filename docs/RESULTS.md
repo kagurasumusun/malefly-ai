@@ -191,3 +191,37 @@ rolling-20 正答 ≥0.70(2/3 seeds)。
 かつ 1 を超える値(正規化の欠陥)。PCI 類似指標として現状は**無効**であり、
 LZ76 実装と正規化(target-neutral PCI 定式)を修正するまで使用しない。
 PRINCIPLES #6(偽装禁止)の適用例として記録を残す。
+
+## 11. サルレベル第一ラウンド: monkey1 (HPC/PFC 追加) — seed300, commit de87e18系
+
+**構成**: Brain(AL/MB/LH/Modulator) + Hippocampus(DG1500→CA3→CA1 + perirhinal層
++ valence細胞) + Pfc(400+E-I 100) を同一 PN ストリームに並列配線。
+US は `set_us` ポート(HPC)と `drive_vum/drive_dan`(Brain 内部駆動、ハチの予測US配線)。
+
+**結果 (seed300)**:
+
+| ベンチ | 判定 | 値 |
+|---|---|---|
+| A DMS (D=1s >0.7, active>rest) | FAIL | 0.35 / 0.55 / 0.45 / D=4s 0.35 |
+| B エピソード valence 再生 | **PASS** | v+=193, v−=0 (65% cue) |
+| B 完成度 | 弱い | 0.167 (PR ベース familiarity) |
+| C 検索練習固定 (>0) | **PASS** | +0.080 |
+| D 間隔効果 (>0) | FAIL | −0.073 |
+
+**このラウンドで直ったバグ(全部実バグ)**:
+1. encode_event が CSR の indices(post側) を pre として読んでいた → 反回帰結合は
+   「post が発火したら強化」のスクランブル、valence 結合は CA3 細胞 #0/#1 しか
+   見ていなかった(ゆえに一度も発火せず v+=0)。pre 行ループに修正。
+2. valence スパイクカウンタが一度も加算されていなかった(read_valence が常時 0)。
+3. PFC が飽和運用(ge≈120 vs 閾値 0.02 の 6000 倍) — 全「信号」が飽和の副産物。
+   NMDA/E-I と運用点の再較正で疎・非同期な標本応答 (act 0.01–0.04) まで到達。
+
+**残る診断(次ラウンド)**:
+- DMS: 信号は D=0 に存在(match fam 0.73 max vs lure 0.002)。D≥1s は遅延維持が
+  崩壊(全パラメータで ~1.5s 固定) or 応募で飽和。疎入力(fanin 3)+コインシデンス
+  閾値+onset 結合は実装済み。再帰 cap で「1s 以下で消滅」と「全募集」の間の
+  安定窓が極端に狭い → 適応項 or 抑制の再設計が必要(Compte 2000 の味覚抑制)
+- D 間隔効果: spaced ITI 3000ms が MB eligibility と干渉の可能性
+- 完成度 0.167: CA3 反回帰の希釈比/量子の再調整
+
+**文献照合**: docs/HUMAN.md(全採用の論文→実装→測定対応表)。

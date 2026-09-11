@@ -47,7 +47,7 @@ struct PfcConfig {
     u32 rec_fanin = 16;
     f32 rec_quanta = 0.0020f;    // naive recurrent weight
     f32 eta_bind = 0.40f;       // one-shot assembly binding at sample time
-    f32 w_rec_max = 0.016f;
+    f32 w_rec_max = 0.00025f;
 
     f32 gate_active = 1.00f;    // top-down protection (arousal/active mode)
     f32 gate_rest = 0.25f;      // rest: distractors write through
@@ -91,7 +91,7 @@ public:
         LifConfig c;
         c.tau_m = pc.tau_m;
         c.tau_exc = pc.tau_exc;
-        c.v_thresh = -0.058f;
+        c.v_thresh = -0.056f;
         c.t_refrac = 0.004f;
         return c;
     }

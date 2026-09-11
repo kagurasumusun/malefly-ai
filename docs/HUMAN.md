@@ -39,4 +39,4 @@
 - 睡眠中リプレイと系統的固定（Wilson & McNaughton 1994; Rasch & Born 2013）→ C の 60s gap を「sleep 相」に
 - 新皮質の低速統合（Fusi, Drew & Abbott 2005; Benna & Fusi 2016）→ MB のカスケード記憶
 - 皮質階層（Markov 2014 の FLNe 階層、Mesulam）→ 領域間の feedforward/feedback 非対称
-- DMS 用: 疎コーディングの再設計（KC fanin ↓、coincidence threshold、onset アセンブリ縛りは実装済み → 次は入力疎性）
+- DMS 用: 再帰結合の安定窓（消滅⇔全募集の間）が極端に狭い。適応項（spike-frequency adaptation）または抑制の時定数再設計が候補。GCAMP 的適応は LIF に未実装
