@@ -10,6 +10,7 @@
 #include "experiments/goal2.hpp"
 #include "experiments/goal3.hpp"
 #include "experiments/emerge0.hpp"
+#include "experiments/monkey1.hpp"
 #include "experiments/pci.hpp"
 
 #include <cstdio>
@@ -65,6 +66,7 @@ void usage() {
                  "[--out results/goal1.json] [--csv results/goal1.csv]\n"
                  "  malefly goal3 [--seed N] [--trials N] [--reversal N] [--back N] "
                  "[--no-rpe] [--no-arousal] [--no-taxonomy] [--tag T]\n"
+                 "  malefly monkey1 [--seed N]\n"
                  "  malefly emerge0 [--seed N] [--empty-ms N] [--odor-ms N]\n"
                  "  malefly pci [--seed N] [--out results/pci.json]\n"
                  "  malefly calib [--seed N] [--pres N] [--kc-quanta F] "
@@ -137,6 +139,19 @@ int main(int argc, char** argv) {
             else { usage(); return 2; }
         }
         return run_goal3(cfg);
+    }
+
+    if (cmd == "monkey1") {
+        Monkey1Config cfg;
+        for (int i = 2; i < argc; ++i) {
+            u64 s = cfg.seed;
+            std::string oj = cfg.out_json, c = cfg.out_csv;
+            if (flag_u64(argv, argc, i, "--seed", s)) cfg.seed = s;
+            else if (flag_str(argv, argc, i, "--out", oj)) cfg.out_json = oj;
+            else if (flag_str(argv, argc, i, "--csv", c)) cfg.out_csv = c;
+            else { usage(); return 2; }
+        }
+        return run_monkey1(cfg);
     }
 
     if (cmd == "emerge0") {

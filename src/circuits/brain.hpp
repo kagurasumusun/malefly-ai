@@ -84,12 +84,19 @@ public:
         integ_.begin_decision(0.0f, 0.0f, 0.0f, false);
     }
 
-    // ---- world interface (the ONLY inputs) ---------------------------------
+    // ---- world interface (the ONLY external inputs) ------------------------
     void set_odor(const Odor* o, f32 conc) { pending_odor_ = o; conc_ = conc; }
     void set_sensors(f32 reward, f32 punish) {
         in_.reward_sensor = reward;
         in_.punish_sensor = punish;
     }
+    // ---- NEIGHBOR-CIRCUIT inputs (wired regions, not OS calls): a
+    // companion circuit can drive the US neurons the same way the sugar
+    // sensor does. Honeybee observation this implements: VUMmx1 fires to a
+    // PREDICTED US (RPE-like), which is what makes retrieval practice
+    // consolidate memories (test-enhanced learning) without any sensor.
+    void drive_vum(f32 q) { in_.reward_sensor = std::max(in_.reward_sensor, q); }
+    void drive_dan(f32 q) { in_.punish_sensor = std::max(in_.punish_sensor, q); }
 
     // ---- the brain, running -------------------------------------------------
     void step(f32 dt) {
@@ -154,6 +161,7 @@ public:
     const MushroomBody& mb() const { return mb_; }
     const LateralHorn& lh() const { return lh_; }
     const Modulator& modulator() const { return mod_; }
+    Modulator& mod() { return mod_; }  // state access for measurement/ablation
     const ActionIntegrator& integrator() const { return integ_; }
     u64 vum_spikes() const { return vum_.total_spikes(); }
     u64 dan_spikes() const { return dan_.total_spikes(); }
