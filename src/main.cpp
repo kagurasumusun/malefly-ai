@@ -9,6 +9,7 @@
 #include "experiments/goal1.hpp"
 #include "experiments/goal2.hpp"
 #include "experiments/goal3.hpp"
+#include "experiments/pci.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -63,6 +64,7 @@ void usage() {
                  "[--out results/goal1.json] [--csv results/goal1.csv]\n"
                  "  malefly goal3 [--seed N] [--trials N] [--reversal N] [--back N] "
                  "[--no-rpe] [--no-arousal] [--no-taxonomy] [--tag T]\n"
+                 "  malefly pci [--seed N] [--out results/pci.json]\n"
                  "  malefly calib [--seed N] [--pres N] [--kc-quanta F] "
                  "[--kc-theta F] [--apl-gain F]\n");
 }
@@ -88,6 +90,9 @@ int main(int argc, char** argv) {
             else if (flag_str(argv, argc, i, "--out", o)) cfg.out_json = o;
             else if (flag_str(argv, argc, i, "--csv", c)) cfg.out_csv = c;
             else if (std::strcmp(argv[i], "--no-lh") == 0) cfg.use_lh = false;
+            else if (std::strcmp(argv[i], "--arbiter-legacy") == 0) cfg.neural_arbiter = false;
+            else if (std::strcmp(argv[i], "--no-modes") == 0) cfg.use_modes = false;
+            else if (std::strcmp(argv[i], "--develop") == 0) cfg.develop = true;
             else { usage(); return 2; }
         }
         return run_goal1(cfg);
@@ -126,9 +131,22 @@ int main(int argc, char** argv) {
             else if (std::strcmp(argv[i], "--no-rpe") == 0) cfg.use_rpe = false;
             else if (std::strcmp(argv[i], "--no-arousal") == 0) cfg.use_arousal = false;
             else if (std::strcmp(argv[i], "--no-taxonomy") == 0) cfg.use_taxonomy = false;
+            else if (std::strcmp(argv[i], "--arbiter-legacy") == 0) cfg.neural_arbiter = false;
             else { usage(); return 2; }
         }
         return run_goal3(cfg);
+    }
+
+    if (cmd == "pci") {
+        PciConfig cfg;
+        for (int i = 2; i < argc; ++i) {
+            u64 s = cfg.seed;
+            std::string o = cfg.out_json;
+            if (flag_u64(argv, argc, i, "--seed", s)) cfg.seed = s;
+            else if (flag_str(argv, argc, i, "--out", o)) cfg.out_json = o;
+            else { usage(); return 2; }
+        }
+        return run_pci(cfg);
     }
 
     if (cmd == "calib") {

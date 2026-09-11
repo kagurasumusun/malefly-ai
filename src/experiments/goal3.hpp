@@ -36,6 +36,7 @@ struct Goal3Config {
     bool use_rpe = true;
     bool use_arousal = true;
     bool use_taxonomy = true;
+    bool neural_arbiter = true;   // false = legacy software arbiter (comparison)
     std::string tag = "full";
     std::string out_json = "results/goal3.json";
     std::string out_csv = "results/goal3.csv";

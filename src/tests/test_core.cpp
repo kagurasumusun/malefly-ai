@@ -374,7 +374,8 @@ static void test_weak_signal_default() {
         mb.step(DT, al.pn_spikes());
     }
     const auto r = mb.readout();
-    CHECK(r.kc_active_frac == 0.0f);
+    // heterogeneous wiring: clean-air activity is sparse but not exactly zero
+    CHECK(r.kc_active_frac < 0.005f);
     const Decision d = decide(r, cfg, rng, false);
     CHECK(d.weak_signal);
     CHECK(near(d.valence, cfg.naive_valence, 1e-6f));  // innate default applies

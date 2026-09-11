@@ -37,12 +37,13 @@ build build/obj/env/environment.o:        cxx src/env/environment.cpp
 build build/obj/experiments/goal1.o:      cxx src/experiments/goal1.cpp
 build build/obj/experiments/goal2.o:      cxx src/experiments/goal2.cpp
 build build/obj/experiments/goal3.o:      cxx src/experiments/goal3.cpp
+build build/obj/experiments/pci.o:        cxx src/experiments/pci.cpp
 build build/obj/experiments/calib.o:      cxx src/experiments/calib.cpp
 build build/obj/main.o:                   cxx src/main.cpp
 build build/obj/tests/test_core.o:        cxx src/tests/test_core.cpp
 
 # ---- binaries ----
-build build/malefly: link build/obj/main.o build/obj/experiments/goal1.o build/obj/experiments/goal2.o build/obj/experiments/goal3.o build/obj/experiments/calib.o build/obj/core/lif.o build/obj/core/synapses.o build/obj/util/odors.o build/obj/circuits/antennal_lobe.o build/obj/circuits/mushroom_body.o build/obj/env/environment.o
+build build/malefly: link build/obj/main.o build/obj/experiments/goal1.o build/obj/experiments/goal2.o build/obj/experiments/goal3.o build/obj/experiments/pci.o build/obj/experiments/calib.o build/obj/core/lif.o build/obj/core/synapses.o build/obj/util/odors.o build/obj/circuits/antennal_lobe.o build/obj/circuits/mushroom_body.o build/obj/env/environment.o
 build build/test_core: link build/obj/tests/test_core.o build/obj/core/lif.o build/obj/core/synapses.o build/obj/util/odors.o build/obj/circuits/antennal_lobe.o build/obj/circuits/mushroom_body.o build/obj/env/environment.o
 
 # ---- actions ----

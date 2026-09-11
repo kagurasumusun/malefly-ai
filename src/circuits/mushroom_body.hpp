@@ -31,7 +31,7 @@ struct MushroomBodyConfig {
     u32 n_kc = 2000;         // real-scale is 4064 (docs/DATA.md); growth is a
                              // measured future step
     u32 kc_fanin = 7;        // median ~7 PNs per KC (connectome data)
-    f32 kc_quanta = 0.034f;  // drive per PN spike onto a KC (calibrated)
+    f32 kc_quanta = 0.032f;  // drive per PN spike onto a KC (calibrated mean; lognormal around it)
     f32 kc_v_thresh = -0.050f;
     f32 apl_gain = 0.002f;   // pooled KC->APL->KC feedback inhibition
     f32 tau_elig = 0.6f;     // uniform trace used when use_taxonomy == false
@@ -60,6 +60,21 @@ struct MushroomBodyConfig {
     // ---- adoptable mechanisms (ablation flags for before/after measurement)
     bool use_taxonomy = true;  // [Allen BICCN] KC subtype differentiation
     bool rpe_gating = true;    // [BRAIN Initiative] |RPE|-gated plasticity
+
+    // ---- heterogeneous wiring (fixed values are an approximation; real
+    // connectomes show broad fan-in ranges and lognormal-like weight
+    // distributions — docs/RESEARCH.md §MICrONS)
+    bool hetero_wiring = true;
+    f32 fanin_sd = 1.6f;          // fan-in distribution width (3..15 clamp)
+    f32 w_lognorm_sigma = 0.30f;  // lognormal weight shape, mean = kc_quanta
+    f32 kc_thresh_sigma = 0.003f; // per-KC threshold heterogeneity (V)
+
+    // ---- development: activity-dependent pruning (structure EMERGES from
+    // spontaneous activity instead of a fixed construction; ablatable)
+    bool develop = false;
+    u32 dev_fanin = 10;            // overconnectivity at birth
+    u32 dev_ms = 30000;            // development budget (simulated ms)
+    f32 dev_target_active = 0.075f; // prune until KC active frac <= this
 };
 
 class MushroomBody {
@@ -96,6 +111,20 @@ public:
 
     void debug_set_elig(u32 kc, f32 e) { elig_[kc] = e; }
 
+    // ---- development: spontaneous-activity-dependent pruning ---------------
+    // Runs `ms` simulated ms of clean-air-like spontaneous input (base-rate
+    // Poisson per PN channel), pruning one random input synapse of KCs that
+    // stay silent (100 ms window), until KC active fraction <= target.
+    // Final fan-in distribution is an emergent measurable (docs/RESULTS.md).
+    void develop(Rng& rng, u32 ms);
+    f64 active_frac_now() const;
+    f64 mean_active_fanin() const;
+    f64 sd_active_fanin() const;
+    u64 dev_pruned() const { return dev_pruned_; }
+    // instrument hooks (pci experiment)
+    void debug_kick(u32 kc) { kc_.add_exc(kc, 0.30f); }
+    u32 kc_spikes_this_step() const { return last_step_spikes_; }
+
     usize memory_bytes() const;
 
 private:
@@ -111,7 +140,9 @@ private:
     f32 avoid_naive_ = 0.0f;
     std::vector<u32> trial_counts_;
     std::vector<u8> trial_pattern_;
+    u64 dev_pruned_ = 0;
     f32 last_gate_ = 1.0f;
+    u32 last_step_spikes_ = 0;
     u64 mbon_ops_ = 0;
     Rng& rng_;
 };

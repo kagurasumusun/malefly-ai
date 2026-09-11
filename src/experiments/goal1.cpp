@@ -15,9 +15,11 @@
 // ============================================================================
 #include "experiments/goal1.hpp"
 
+#include "circuits/action_integrator.hpp"
 #include "circuits/action_selection.hpp"
 #include "circuits/antennal_lobe.hpp"
 #include "circuits/lateral_horn.hpp"
+#include "circuits/modulator.hpp"
 #include "circuits/mushroom_body.hpp"
 #include "core/rng.hpp"
 #include "env/environment.hpp"
@@ -141,8 +143,15 @@ int run_goal1(const Goal1Config& cfg) {
     MushroomBodyConfig mbc;
     MushroomBody mb(mbc, rng, cfg.n_glom);
     LateralHorn lh(LateralHornConfig{}, rng, cfg.n_glom);
+    ModulatorConfig mod_cfg;
+    mod_cfg.modes_enabled = cfg.use_modes;
+    Modulator mod(mod_cfg);
+    ActionIntegrator integ(ActionIntegratorConfig{});
     BanditConfig bc;
     BanditEnv env(odor_a, odor_b, bc, rng);
+
+    // optional development: wiring emerges from spontaneous-activity pruning
+    if (cfg.develop) mb.develop(rng, mbc.dev_ms);
 
     u64 sim_ms = 0, pn_spikes_in_odor = 0, kc_spikes_in_odor = 0, lh_ops = 0;
     u32 odor_windows = 0;
@@ -153,15 +162,16 @@ int run_goal1(const Goal1Config& cfg) {
         mb.step(DT, pn);
         lh.set_input(pn);
         lh.step(DT);
+        mod.step(DT, &rng);
         ++sim_ms;
     };
-    auto present = [&](const Odor& odor) {
+    auto present = [&](const Odor& odor, u32 ms) {
         mb.begin_trial();
         lh.begin_window();
         al.set_odor(&odor, cfg.concentration);
         const u64 pn0 = al.pn().total_spikes();
         const u64 kc0 = mb.kc_total_spikes();
-        for (u32 t = 0; t < cfg.t_on_ms; ++t) step_both();
+        for (u32 t = 0; t < ms; ++t) step_both();
         pn_spikes_in_odor += al.pn().total_spikes() - pn0;
         kc_spikes_in_odor += mb.kc_total_spikes() - kc0;
         ++odor_windows;
@@ -170,9 +180,37 @@ int run_goal1(const Goal1Config& cfg) {
         al.set_odor(nullptr, 0.0f);
         for (u32 t = 0; t < ms; ++t) step_both();
     };
-    auto decide_with_lh = [&](const MushroomBody::Readout& r, bool sample) {
+    // MB->LH gate: trained |valence| suppresses the innate path
+    auto gated_innate = [&](f32 v_mb) {
+        if (!cfg.use_lh) return 0.0f;
+        const f32 gate =
+            1.0f - std::min(1.0f, std::fabs(v_mb) / mbc.innate_gate_vmax);
+        return lh.innate_valence() * gate;
+    };
+    // Deliberation: the odor stays on; the last 200 ms feed the ACTION
+    // INTEGRATOR (neural WTA ramping circuit). No software arbiter inside the
+    // agent; the legacy sigmoid path exists only for before/after comparison.
+    auto deliberate = [&](bool sample) {
+        if (cfg.neural_arbiter) {
+            integ.begin_decision(0.0f, 0.0f, mod.arousal(), mod.rest());
+            for (u32 t = 0; t < 200; ++t) {
+                step_both();
+                const auto r = mb.readout();
+                integ.step(DT, rng, r.valence, gated_innate(r.valence));
+            }
+            Decision d;
+            d.approach = integ.decided() ? integ.approach_wins() : false;
+            d.p_approach = d.approach ? 1.0f : 0.0f;
+            d.valence = integ.margin();
+            d.weak_signal = !integ.decided();
+            (void)sample;
+            return d;
+        }
+        const auto r = mb.readout();
         DecisionContext ctx;
-        if (cfg.use_lh) ctx.innate_valence = lh.innate_valence();
+        ctx.innate_valence = gated_innate(r.valence);
+        ctx.arousal = mod.arousal();
+        ctx.use_arousal = cfg.use_modes;
         return decide_ctx(r, mbc, rng, sample, ctx);
     };
     auto probe_all = [&](std::vector<ProbeRow>& out) {
@@ -186,11 +224,19 @@ int run_goal1(const Goal1Config& cfg) {
         }
         for (u32 idx : order) {
             const Odor& o = *probe_list[idx];
-            present(o);
-            const auto r = mb.readout();
-            const Decision d = decide_with_lh(r, false);
-            out.push_back({o.name, d.p_approach, d.valence, r.kc_active_frac,
-                           lh.innate_valence()});
+            if (cfg.neural_arbiter) {
+                present(o, cfg.t_on_ms - 200);
+                const Decision d = deliberate(false);
+                const auto rr = mb.readout();
+                out.push_back({o.name, d.p_approach, d.valence,
+                               rr.kc_active_frac, lh.innate_valence()});
+            } else {
+                present(o, cfg.t_on_ms);
+                const auto r = mb.readout();
+                const Decision d = deliberate(false);
+                out.push_back({o.name, d.p_approach, d.valence,
+                               r.kc_active_frac, lh.innate_valence()});
+            }
             run_gap(cfg.t_iti_ms);
         }
     };
@@ -207,9 +253,10 @@ int run_goal1(const Goal1Config& cfg) {
 
     for (u32 trial = 0; trial < cfg.n_train_trials; ++trial) {
         env.begin_trial();
-        present(env.odor());
+        if (cfg.neural_arbiter) present(env.odor(), cfg.t_on_ms - 200);
+        else present(env.odor(), cfg.t_on_ms);
+        const Decision d = deliberate(true);
         const auto r = mb.readout();
-        const Decision d = decide_with_lh(r, true);
         const Action act = d.approach ? Action::Approach : Action::Avoid;
         const f32 rew = env.apply(act);
         const bool correct = (d.approach == env.current_is_good());
@@ -231,7 +278,7 @@ int run_goal1(const Goal1Config& cfg) {
     // KC pattern analysis
     std::vector<std::vector<u8>> pats(np);
     for (u32 i = 0; i < np; ++i) {
-        present(*probe_list[i]);
+        present(*probe_list[i], cfg.t_on_ms);
         pats[i] = mb.trial_pattern();
         run_gap(cfg.t_iti_ms);
     }
@@ -319,6 +366,9 @@ int run_goal1(const Goal1Config& cfg) {
         j.kv("decision_temp", mbc.decision_temp);
         j.kv("epsilon", mbc.epsilon);
         j.kv("use_lh", cfg.use_lh);
+        j.kv("neural_arbiter", cfg.neural_arbiter);
+        j.kv("use_modes", cfg.use_modes);
+        j.kv("develop", cfg.develop);
         j.kv("use_taxonomy", mbc.use_taxonomy);
         j.kv("rpe_gating", mbc.rpe_gating);
         j.kv("ln_subclasses", al.ln_fast().size() > 0 && al.ln_slow().size() > 0);
@@ -339,6 +389,10 @@ int run_goal1(const Goal1Config& cfg) {
         j.end_arr();
         j.kv("lh_ops", lh.ops());
         j.kv("last_rpe_gate", mb.last_rpe_gate());
+        j.kv("mean_active_fanin", mb.mean_active_fanin());
+        j.kv("sd_active_fanin", mb.sd_active_fanin());
+        j.kv("dev_pruned", mb.dev_pruned());
+        j.kv("rest_frac", mod.rest_frac());
         j.end_obj();
 
         j.k("odor_profile_overlap");
@@ -493,9 +547,13 @@ int run_goal1(const Goal1Config& cfg) {
     const OdorAgg preN = aggregate(probe_pre, "N_neutral");
 
     std::printf("==== Goal 1: autonomous value learning (MaleCNS MB circuit) ====\n");
-    std::printf("seed=%llu trials=%u outcomes(+/-)=%u/%u | stack: LH=%d taxonomy=%d rpe=%d\n",
+    std::printf("seed=%llu trials=%u outcomes(+/-)=%u/%u | LH=%d taxonomy=%d rpe=%d arbiter=%s modes=%d develop=%d fanin=%.1f+-%.1f pruned=%llu rest=%.2f\n",
                 static_cast<unsigned long long>(cfg.seed), cfg.n_train_trials,
-                n_eff_reward, n_eff_punish, cfg.use_lh, mbc.use_taxonomy, mbc.rpe_gating);
+                n_eff_reward, n_eff_punish, cfg.use_lh, mbc.use_taxonomy,
+                mbc.rpe_gating, cfg.neural_arbiter ? "neural" : "legacy",
+                cfg.use_modes, cfg.develop, mb.mean_active_fanin(),
+                mb.sd_active_fanin(), static_cast<unsigned long long>(mb.dev_pruned()),
+                mod.rest_frac());
     std::printf("LH innate valence (naive): A=%.3f B=%.3f N=%.3f\n",
                 preA.innate, preB.innate, preN.innate);
     std::printf("KC active frac: A=%.1f%% B=%.1f%% N=%.1f%% | PN Hz(odor)=%.1f | KC spikes/pres=%.2f\n",

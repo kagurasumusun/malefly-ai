@@ -53,4 +53,19 @@ struct Synapses {
 Synapses make_random_fanin(u32 n_pre, u32 n_post, u32 fanin, Rng& rng,
                            f32 w_mean, f32 w_jitter);
 
+// Heterogeneous wiring (fixed values are an approximation; real connectomes
+// show broad fan-in ranges and lognormal-like weight distributions —
+// docs/RESEARCH.md §MICrONS). Per-post fan-in ~ round(N(fanin_mean, fanin_sd))
+// clamped to [3, 15]; per-synapse weights ~ LogNormal with the SAME mean
+// w_mean (mu = ln(w_mean) - sigma^2/2) and shape w_sigma.
+Synapses make_random_fanin_dist(u32 n_pre, u32 n_post, f32 fanin_mean,
+                                f32 fanin_sd, Rng& rng, f32 w_mean, f32 w_sigma);
+
+// zero one uniformly-chosen nonzero-weight synapse of neuron `post`
+// (activity-dependent pruning primitive; returns false if none left)
+bool prune_one_synapse(Synapses& s, u32 post, Rng& rng);
+
+// count of nonzero-weight inputs to neuron `post`
+u32 active_fanin(const Synapses& s, u32 post);
+
 }  // namespace malefly

@@ -1,27 +1,31 @@
 {
   "blocks": [
     {
-      "acc": 0.7,
-      "phase": 1
-    },
-    {
-      "acc": 0.5,
-      "phase": 1
-    },
-    {
-      "acc": 0.65,
-      "phase": 1
-    },
-    {
       "acc": 0.8,
       "phase": 1
     },
     {
-      "acc": 0.75,
+      "acc": 0.85,
       "phase": 1
     },
     {
-      "acc": 0.35,
+      "acc": 0.85,
+      "phase": 1
+    },
+    {
+      "acc": 0.9,
+      "phase": 1
+    },
+    {
+      "acc": 0.95,
+      "phase": 1
+    },
+    {
+      "acc": 0.2,
+      "phase": 2
+    },
+    {
+      "acc": 0.6,
       "phase": 2
     },
     {
@@ -29,19 +33,15 @@
       "phase": 2
     },
     {
-      "acc": 0.45,
+      "acc": 0.3,
       "phase": 2
     },
     {
-      "acc": 0.8,
+      "acc": 0.5,
       "phase": 2
     },
     {
-      "acc": 0.6,
-      "phase": 2
-    },
-    {
-      "acc": 0.6,
+      "acc": 0.55,
       "phase": 3
     },
     {
@@ -49,7 +49,7 @@
       "phase": 3
     },
     {
-      "acc": 0.7,
+      "acc": 0.6,
       "phase": 3
     }
   ],
@@ -57,36 +57,38 @@
     "n_back": 60,
     "n_reversal": 100,
     "n_train": 100,
+    "neural_arbiter": true,
+    "rest_frac": 0.2990721393034826,
     "use_arousal": true,
     "use_rpe": false,
     "use_taxonomy": true
   },
   "experiment": "goal3_reversal_adaptation",
   "perf": {
-    "rt_factor": 50.50024687177587,
+    "rt_factor": 42.92959450678188,
     "sim_s": 402.0,
-    "wall_s": 7.960357125
+    "wall_s": 9.364169511
   },
   "probes_p_approach": [
     {
       "pA": 1.0,
+      "pB": 0.26666666666666666
+    },
+    {
+      "pA": 0.0,
       "pB": 0.0
     },
     {
       "pA": 0.0,
-      "pB": 1.0
-    },
-    {
-      "pA": 1.0,
       "pB": 0.0
     }
   ],
-  "run_hash": "c976be525a4d1f02",
+  "run_hash": "3727ff6d8ba976b6",
   "seed": 42,
   "t70": {
     "phase1_train": 20,
-    "phase2_reversal": 65,
-    "phase3_back": 60
+    "phase2_reversal": -1,
+    "phase3_back": 55
   },
   "tag": "norpe"
 }

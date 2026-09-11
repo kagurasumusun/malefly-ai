@@ -26,6 +26,10 @@ struct Goal1Config {
     u32 t_iti_ms = 500;         // inter-trial interval
     f32 concentration = 1.0f;
     bool use_lh = true;         // lateral-horn innate valence (ablatable)
+    bool neural_arbiter = true; // neural action integrator (false = legacy
+                                // software arbiter, for before/after only)
+    bool use_modes = true;      // slow rest/active mode network (ablatable)
+    bool develop = false;       // activity-dependent pruning before training
     std::string out_json = "results/goal1.json";
     std::string out_csv = "results/goal1.csv";
 };

@@ -1,35 +1,39 @@
 {
   "blocks": [
     {
-      "acc": 0.75,
+      "acc": 0.6,
       "phase": 1
     },
     {
-      "acc": 0.9,
+      "acc": 0.7,
       "phase": 1
-    },
-    {
-      "acc": 0.95,
-      "phase": 1
-    },
-    {
-      "acc": 0.95,
-      "phase": 1
-    },
-    {
-      "acc": 0.9,
-      "phase": 1
-    },
-    {
-      "acc": 0.15,
-      "phase": 2
     },
     {
       "acc": 0.55,
-      "phase": 2
+      "phase": 1
+    },
+    {
+      "acc": 0.65,
+      "phase": 1
+    },
+    {
+      "acc": 0.4,
+      "phase": 1
     },
     {
       "acc": 0.45,
+      "phase": 2
+    },
+    {
+      "acc": 0.3,
+      "phase": 2
+    },
+    {
+      "acc": 0.5,
+      "phase": 2
+    },
+    {
+      "acc": 0.4,
       "phase": 2
     },
     {
@@ -37,19 +41,15 @@
       "phase": 2
     },
     {
-      "acc": 0.4,
-      "phase": 2
-    },
-    {
-      "acc": 0.35,
-      "phase": 3
-    },
-    {
       "acc": 0.45,
       "phase": 3
     },
     {
-      "acc": 0.4,
+      "acc": 0.55,
+      "phase": 3
+    },
+    {
+      "acc": 0.7,
       "phase": 3
     }
   ],
@@ -57,38 +57,38 @@
     "n_back": 60,
     "n_reversal": 100,
     "n_train": 100,
-    "neural_arbiter": true,
-    "rest_frac": 0.13705223880597014,
+    "neural_arbiter": false,
+    "rest_frac": 0.14658955223880596,
     "use_arousal": true,
     "use_rpe": true,
     "use_taxonomy": true
   },
   "experiment": "goal3_reversal_adaptation",
   "perf": {
-    "rt_factor": 44.030183915595174,
+    "rt_factor": 45.113618280670885,
     "sim_s": 402.0,
-    "wall_s": 9.130100405
+    "wall_s": 8.910834806
   },
   "probes_p_approach": [
     {
       "pA": 1.0,
-      "pB": 0.06666666666666667
-    },
-    {
-      "pA": 0.0,
       "pB": 0.0
     },
     {
       "pA": 0.0,
+      "pB": 1.0
+    },
+    {
+      "pA": 1.0,
       "pB": 0.0
     }
   ],
-  "run_hash": "11ec6db557afe37d",
-  "seed": 8,
+  "run_hash": "19bf68efddd00e4e",
+  "seed": 42,
   "t70": {
-    "phase1_train": 20,
-    "phase2_reversal": 73,
-    "phase3_back": -1
+    "phase1_train": 26,
+    "phase2_reversal": 98,
+    "phase3_back": 55
   },
-  "tag": "full"
+  "tag": "legacy"
 }

@@ -3,6 +3,7 @@
 // ============================================================================
 #include "experiments/goal3.hpp"
 
+#include "circuits/action_integrator.hpp"
 #include "circuits/action_selection.hpp"
 #include "circuits/antennal_lobe.hpp"
 #include "circuits/lateral_horn.hpp"
@@ -56,7 +57,9 @@ int run_goal3(const Goal3Config& cfg) {
     LateralHorn lh(LateralHornConfig{}, rng, 50);
     ModulatorConfig mod_cfg;
     mod_cfg.enabled = cfg.use_arousal;
+    mod_cfg.modes_enabled = cfg.use_arousal;
     Modulator mod(mod_cfg);
+    ActionIntegrator integ(ActionIntegratorConfig{});
 
     u64 sim_ms = 0;
     auto step_both = [&]() {
@@ -65,15 +68,45 @@ int run_goal3(const Goal3Config& cfg) {
         mb.step(DT, pn);
         lh.set_input(pn);
         lh.step(DT);
-        mod.step(DT);
+        mod.step(DT, &rng);
         ++sim_ms;
     };
-    auto present = [&](const Odor& o, bool sense_only = false) {
+    auto present = [&](const Odor& o, u32 ms, bool sense_only = false) {
         mb.begin_trial();
         lh.begin_window();
         al.set_odor(&o, 1.0f);
-        for (u32 t = 0; t < 500; ++t) step_both();
+        for (u32 t = 0; t < ms; ++t) step_both();
         (void)sense_only;
+    };
+    // MB->LH gate shared with goal1
+    auto gated_innate = [&](f32 v_mb) {
+        const f32 gate =
+            1.0f - std::min(1.0f, std::fabs(v_mb) / mbc.innate_gate_vmax);
+        return lh.innate_valence() * gate;
+    };
+    // neural deliberation (200 ms, odor on) or legacy instant arbiter
+    auto deliberate = [&](bool sample) {
+        if (cfg.neural_arbiter) {
+            integ.begin_decision(0.0f, 0.0f, mod.arousal(), mod.rest());
+            for (u32 t = 0; t < 200; ++t) {
+                step_both();
+                const auto r = mb.readout();
+                integ.step(DT, rng, r.valence, gated_innate(r.valence));
+            }
+            Decision d;
+            d.approach = integ.decided() ? integ.approach_wins() : false;
+            d.p_approach = d.approach ? 1.0f : 0.0f;
+            d.valence = integ.margin();
+            d.weak_signal = !integ.decided();
+            (void)sample;
+            return d;
+        }
+        const auto r = mb.readout();
+        DecisionContext ctx;
+        ctx.innate_valence = gated_innate(r.valence);
+        ctx.arousal = mod.arousal();
+        ctx.use_arousal = cfg.use_arousal;
+        return decide_ctx(r, mbc, rng, sample, ctx);
     };
     auto gap = [&](u32 ms) {
         al.set_odor(nullptr, 0.0f);
@@ -85,15 +118,22 @@ int run_goal3(const Goal3Config& cfg) {
         u32 appr = 0;
         f64 v = 0;
         for (u32 i = 0; i < reps; ++i) {
-            present(o);
-            const auto r = mb.readout();
-            DecisionContext ctx;
-            ctx.innate_valence = lh.innate_valence();
-            ctx.arousal = mod.arousal();
-            ctx.use_arousal = cfg.use_arousal;
-            const Decision d = decide_ctx(r, mbc, rng, false, ctx);
-            appr += d.approach ? 1u : 0u;
-            v += d.valence;
+            if (cfg.neural_arbiter) {
+                present(o, 300);
+                const Decision d = deliberate(false);
+                appr += d.approach ? 1u : 0u;
+                v += d.valence;
+            } else {
+                present(o, 500);
+                const auto r = mb.readout();
+                DecisionContext ctx;
+                ctx.innate_valence = gated_innate(r.valence);
+                ctx.arousal = mod.arousal();
+                ctx.use_arousal = cfg.use_arousal;
+                const Decision d = decide_ctx(r, mbc, rng, false, ctx);
+                appr += d.approach ? 1u : 0u;
+                v += d.valence;
+            }
             gap(500);
         }
         return std::pair<f64, f64>(static_cast<f64>(appr) / reps, v / reps);
@@ -113,13 +153,10 @@ int run_goal3(const Goal3Config& cfg) {
     auto run_phase = [&](u8 phase, u32 n_trials, bool a_good) {
         for (u32 t = 0; t < n_trials; ++t) {
             const bool is_a = rng.bernoulli(0.5f);
-            present(is_a ? odor_a : odor_b);
+            if (cfg.neural_arbiter) present(is_a ? odor_a : odor_b, 300);
+            else present(is_a ? odor_a : odor_b, 500);
+            const Decision d = deliberate(true);
             const auto r = mb.readout();
-            DecisionContext ctx;
-            ctx.innate_valence = lh.innate_valence();
-            ctx.arousal = mod.arousal();
-            ctx.use_arousal = cfg.use_arousal;
-            const Decision d = decide_ctx(r, mbc, rng, true, ctx);
             const bool good = (is_a == a_good);
             f32 rew = 0.0f;
             if (d.approach)
@@ -233,6 +270,8 @@ int run_goal3(const Goal3Config& cfg) {
         j.kv("use_rpe", cfg.use_rpe);
         j.kv("use_arousal", cfg.use_arousal);
         j.kv("use_taxonomy", cfg.use_taxonomy);
+        j.kv("neural_arbiter", cfg.neural_arbiter);
+        j.kv("rest_frac", mod.rest_frac());
         j.end_obj();
         j.k("probes_p_approach");
         j.arr();

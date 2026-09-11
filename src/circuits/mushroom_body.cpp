@@ -13,8 +13,17 @@ MushroomBody::MushroomBody(const MushroomBodyConfig& cfg, Rng& rng, u32 n_pn)
           return c;
       }()),
       rng_(rng) {
-    // sparse random PN->KC expansion (fixed; NOT plastic — connectome structure)
-    pn2kc_ = make_random_fanin(n_pn, cfg.n_kc, cfg.kc_fanin, rng, cfg.kc_quanta, 0.0f);
+    // sparse random PN->KC expansion (fixed; NOT plastic — connectome structure).
+    // Fixed values are an approximation: by default wiring is HETEROGENEOUS
+    // (fan-in distribution + lognormal weights, docs/RESEARCH.md §MICrONS);
+    // hetero_wiring=false restores the legacy homogeneous construction.
+    pn2kc_ = cfg.hetero_wiring
+                 ? make_random_fanin_dist(n_pn, cfg.n_kc,
+                                          static_cast<f32>(cfg.kc_fanin),
+                                          cfg.fanin_sd, rng, cfg.kc_quanta,
+                                          cfg.w_lognorm_sigma)
+                 : make_random_fanin(n_pn, cfg.n_kc, cfg.kc_fanin, rng,
+                                     cfg.kc_quanta, 0.0f);
 
     // naive flies mildly approach odors (LH-driven default)
     w_appr_.resize(cfg.n_kc);
@@ -52,9 +61,85 @@ MushroomBody::MushroomBody(const MushroomBodyConfig& cfg, Rng& rng, u32 n_pn)
         eta_scale_[k] = cfg.use_taxonomy ? KC_SUBTYPES[sid].eta_scale : 1.0f;
     }
 
+    // threshold heterogeneity (fixed threshold = approximation)
+    if (cfg.kc_thresh_sigma > 0.0f)
+        for (u32 k = 0; k < cfg.n_kc; ++k)
+            kc_.set_threshold(k, cfg.kc_v_thresh +
+                                     cfg.kc_thresh_sigma * rng.normal(0.0f, 1.0f));
+
     elig_.assign(cfg.n_kc, 0.0f);
     trial_counts_.assign(cfg.n_kc, 0);
     trial_pattern_.assign(cfg.n_kc, 0);
+}
+
+void MushroomBody::develop(Rng& rng, u32 ms) {
+    // spontaneous clean-air-like input -> activity-dependent pruning.
+    // Wiring (which synapses survive) EMERGES from dynamics instead of a
+    // fixed construction; only the development RULE is designed.
+    const u32 n_pre = pn2kc_.n_pre;
+    std::vector<u32> recent(cfg_.n_kc, 0);      // spikes in trailing window
+    constexpr u32 kWindow = 100;                // ms
+    // start from overconnectivity
+    pn2kc_ = make_random_fanin_dist(n_pre, cfg_.n_kc,
+                                    static_cast<f32>(cfg_.dev_fanin),
+                                    cfg_.fanin_sd, rng, cfg_.kc_quanta,
+                                    cfg_.w_lognorm_sigma);
+    dev_pruned_ = 0;
+    u32 window_spikes_total = 0;
+    std::vector<u32> window_counts(cfg_.n_kc, 0);
+    for (u32 t = 0; t < ms; ++t) {
+        // spontaneous ORN base-rate Poisson -> PN channels
+        std::vector<u8> pn(n_pre, 0);
+        for (u32 g = 0; g < n_pre; ++g)
+            pn[g] = rng.bernoulli(4.0f * DT) ? 1 : 0;  // 4 Hz base rate
+        step(DT, pn.data());
+        // trailing-window spike bookkeeping
+        const u8* sp = kc_.spikes();
+        for (u32 k = 0; k < cfg_.n_kc; ++k) {
+            if (window_counts[k] > 0 && t >= kWindow &&
+                t % kWindow == static_cast<u32>(k) % kWindow) { /* noop */ }
+        }
+        for (u32 k = 0; k < cfg_.n_kc; ++k) {
+            recent[k] += sp[k];
+            window_spikes_total += sp[k];
+        }
+        if (t >= kWindow && t % 5 == 0) {
+            // prune silent KCs: one input per silent KC per sweep
+            for (u32 k = 0; k < cfg_.n_kc; ++k) {
+                if (recent[k] == 0 &&
+                    active_fanin(pn2kc_, k) > 3) {
+                    if (prune_one_synapse(pn2kc_, k, rng)) ++dev_pruned_;
+                }
+            }
+            for (u32 k = 0; k < cfg_.n_kc; ++k) recent[k] = 0;
+            // stop when target sparsity reached
+            if (active_frac_now() <= cfg_.dev_target_active) break;
+        }
+        (void)window_counts;
+        (void)window_spikes_total;
+    }
+}
+
+f64 MushroomBody::active_frac_now() const {
+    u32 c = 0;
+    for (u8 x : trial_pattern_) c += x;
+    return static_cast<f64>(c) / static_cast<f64>(cfg_.n_kc);
+}
+
+f64 MushroomBody::mean_active_fanin() const {
+    f64 s = 0;
+    for (u32 k = 0; k < cfg_.n_kc; ++k) s += active_fanin(pn2kc_, k);
+    return s / static_cast<f64>(cfg_.n_kc);
+}
+
+f64 MushroomBody::sd_active_fanin() const {
+    const f64 m = mean_active_fanin();
+    f64 s = 0;
+    for (u32 k = 0; k < cfg_.n_kc; ++k) {
+        const f64 d = static_cast<f64>(active_fanin(pn2kc_, k)) - m;
+        s += d * d;
+    }
+    return std::sqrt(s / static_cast<f64>(std::max<u32>(1, cfg_.n_kc - 1)));
 }
 
 void MushroomBody::step(f32 dt, const u8* pn_spikes) {
@@ -71,6 +156,12 @@ void MushroomBody::step(f32 dt, const u8* pn_spikes) {
 
     // 3) KC integration
     kc_.step(dt);
+    {
+        const u8* s = kc_.spikes();
+        u32 c = 0;
+        for (u32 k = 0; k < cfg_.n_kc; ++k) c += s[k];
+        last_step_spikes_ = c;
+    }
 
     // 4) per-subtype eligibility decay + per-trial counters
     f32 decay[KC_N_SUBTYPES];

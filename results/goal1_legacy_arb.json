@@ -1,0 +1,428 @@
+{
+  "config": {
+    "apl_gain": 0.0020000000949949026,
+    "decision_temp": 0.2199999988079071,
+    "develop": false,
+    "epsilon": 0.05000000074505806,
+    "eta_punish": 0.14000000059604645,
+    "eta_reward": 0.11999999731779099,
+    "kc_fanin": 7,
+    "kc_quanta": 0.03200000151991844,
+    "kc_v_thresh": -0.05000000074505806,
+    "ln_subclasses": true,
+    "n_glom": 50,
+    "n_kc": 2000,
+    "n_probe_each": 25,
+    "n_train_trials": 200,
+    "neural_arbiter": false,
+    "p_punish_bad": 0.8500000238418579,
+    "p_reward_good": 0.8500000238418579,
+    "rpe_gating": true,
+    "seed": 42,
+    "t_iti_ms": 500,
+    "t_on_ms": 500,
+    "t_outcome_ms": 200,
+    "use_lh": true,
+    "use_modes": true,
+    "use_taxonomy": true
+  },
+  "experiment": "goal1_value_learning",
+  "kc_pattern_jaccard": {
+    "A_rewarded": {
+      "A_rewarded": 1.0,
+      "B_punished": 0.13333333333333333,
+      "C_mixture": 0.3317972350230415,
+      "D_partialA": 0.23595505617977527,
+      "N_neutral": 0.05056179775280899
+    },
+    "B_punished": {
+      "A_rewarded": 0.13333333333333333,
+      "B_punished": 1.0,
+      "C_mixture": 0.24050632911392406,
+      "D_partialA": 0.23161764705882354,
+      "N_neutral": 0.043478260869565216
+    },
+    "C_mixture": {
+      "A_rewarded": 0.3317972350230415,
+      "B_punished": 0.24050632911392406,
+      "C_mixture": 1.0,
+      "D_partialA": 0.2737642585551331,
+      "N_neutral": 0.054945054945054944
+    },
+    "D_partialA": {
+      "A_rewarded": 0.23595505617977527,
+      "B_punished": 0.23161764705882354,
+      "C_mixture": 0.2737642585551331,
+      "D_partialA": 1.0,
+      "N_neutral": 0.07373271889400922
+    },
+    "N_neutral": {
+      "A_rewarded": 0.05056179775280899,
+      "B_punished": 0.043478260869565216,
+      "C_mixture": 0.054945054945054944,
+      "D_partialA": 0.07373271889400922,
+      "N_neutral": 1.0
+    }
+  },
+  "learned_weights": {
+    "A_rewarded": {
+      "mean_w_approach": 0.5335441987279436,
+      "mean_w_avoid": 0.027141277061801562
+    },
+    "B_punished": {
+      "mean_w_approach": 0.19457155011822375,
+      "mean_w_avoid": 0.28224574716216855
+    },
+    "C_mixture": {
+      "mean_w_approach": 0.3946888907970924,
+      "mean_w_avoid": 0.1091877493982007
+    },
+    "D_partialA": {
+      "mean_w_approach": 0.428570666930024,
+      "mean_w_avoid": 0.18061635167674817
+    },
+    "N_neutral": {
+      "mean_w_approach": 0.43489573440617985,
+      "mean_w_avoid": 0.2619203485134575
+    }
+  },
+  "mechanisms": {
+    "dev_pruned": 0,
+    "kc_subtypes": [
+      {
+        "n": 891,
+        "name": "alpha-beta",
+        "tau_elig": 2.5
+      },
+      {
+        "n": 342,
+        "name": "alpha-prime-beta-prime",
+        "tau_elig": 0.30000001192092896
+      },
+      {
+        "n": 767,
+        "name": "gamma",
+        "tau_elig": 0.800000011920929
+      }
+    ],
+    "last_rpe_gate": 0.5297102332115173,
+    "lh_ops": 403875,
+    "mean_active_fanin": 7.0595,
+    "rest_frac": 0.3837435483870968,
+    "sd_active_fanin": 1.6402148952046625
+  },
+  "neuro_stats": {
+    "kc_spikes_per_presentation": 264.03620689655173,
+    "pn_hz_during_odor": 6.731793103448276
+  },
+  "odor_profile_overlap": {
+    "A_rewarded": {
+      "A_rewarded": 1.0,
+      "B_punished": 0.2894393503665924,
+      "C_mixture": 0.5673137903213501,
+      "D_partialA": 0.5258199572563171,
+      "N_neutral": 0.11304572969675064
+    },
+    "B_punished": {
+      "A_rewarded": 0.2894393503665924,
+      "B_punished": 1.0,
+      "C_mixture": 0.5648314356803894,
+      "D_partialA": 0.34266412258148193,
+      "N_neutral": 0.11443948745727539
+    },
+    "C_mixture": {
+      "A_rewarded": 0.5673137903213501,
+      "B_punished": 0.5648314356803894,
+      "C_mixture": 1.0,
+      "D_partialA": 0.4997457265853882,
+      "N_neutral": 0.17219455540180206
+    },
+    "D_partialA": {
+      "A_rewarded": 0.5258199572563171,
+      "B_punished": 0.34266412258148193,
+      "C_mixture": 0.4997457265853882,
+      "D_partialA": 1.0,
+      "N_neutral": 0.14591778814792633
+    },
+    "N_neutral": {
+      "A_rewarded": 0.11304572969675064,
+      "B_punished": 0.11443948745727539,
+      "C_mixture": 0.17219455540180206,
+      "D_partialA": 0.14591778814792633,
+      "N_neutral": 1.0
+    }
+  },
+  "perf": {
+    "bytes_per_neuron": 97.15885167464114,
+    "bytes_per_syn_pn2kc": 8.01444861534103,
+    "lh_ops": 0,
+    "mem_bytes": 203062,
+    "neuron_steps": 1295800000,
+    "neurons": 2090,
+    "neurons_per_s": 102202817.64026926,
+    "rt_factor": 48.90086968433936,
+    "sim_ms": 620000,
+    "sim_s": 620.0,
+    "syn_ops": 32760125,
+    "synops_per_s": 2583868.715270432,
+    "wall_s": 12.678711115
+  },
+  "probes": {
+    "mid": [
+      {
+        "kc_active_frac_mean": 0.07507999926805496,
+        "lh_innate_mean": 0.09788224071264268,
+        "n": 25,
+        "odor": "A_rewarded",
+        "p_approach_mean": 0.8543055105209351,
+        "p_approach_sd": 0.006244552919515742,
+        "valence_mean": 0.38932021498680114
+      },
+      {
+        "kc_active_frac_mean": 0.08145999938249587,
+        "lh_innate_mean": 0.07742079496383666,
+        "n": 25,
+        "odor": "B_punished",
+        "p_approach_mean": 0.3278487479686737,
+        "p_approach_sd": 0.043180330382162346,
+        "valence_mean": -0.15924894750118257
+      },
+      {
+        "kc_active_frac_mean": 0.08391999989748002,
+        "lh_innate_mean": 0.08791560143232345,
+        "n": 25,
+        "odor": "C_mixture",
+        "p_approach_mean": 0.6949715566635132,
+        "p_approach_sd": 0.028085425104457943,
+        "valence_mean": 0.18192971289157867
+      },
+      {
+        "kc_active_frac_mean": 0.09090000033378601,
+        "lh_innate_mean": 0.09184430480003357,
+        "n": 25,
+        "odor": "D_partialA",
+        "p_approach_mean": 0.6793732500076294,
+        "p_approach_sd": 0.018779351012562805,
+        "valence_mean": 0.16547405302524568
+      },
+      {
+        "kc_active_frac_mean": 0.016739999931305646,
+        "lh_innate_mean": 0.011539752138778567,
+        "n": 25,
+        "odor": "N_neutral",
+        "p_approach_mean": 0.5419543468952179,
+        "p_approach_sd": 0.10954237549388449,
+        "valence_mean": 0.03798611069098115
+      }
+    ],
+    "post": [
+      {
+        "kc_active_frac_mean": 0.06738000050187111,
+        "lh_innate_mean": 0.08667498499155045,
+        "n": 25,
+        "odor": "A_rewarded",
+        "p_approach_mean": 0.8587529492378235,
+        "p_approach_sd": 0.008049006523472598,
+        "valence_mean": 0.39741061568260194
+      },
+      {
+        "kc_active_frac_mean": 0.0726800000667572,
+        "lh_innate_mean": 0.0697144815325737,
+        "n": 25,
+        "odor": "B_punished",
+        "p_approach_mean": 0.2732256984710693,
+        "p_approach_sd": 0.04642930467321161,
+        "valence_mean": -0.21760763347148895
+      },
+      {
+        "kc_active_frac_mean": 0.07353999957442284,
+        "lh_innate_mean": 0.07906566917896271,
+        "n": 25,
+        "odor": "C_mixture",
+        "p_approach_mean": 0.6726664471626281,
+        "p_approach_sd": 0.028722694984846146,
+        "valence_mean": 0.1590489688515663
+      },
+      {
+        "kc_active_frac_mean": 0.08169999986886978,
+        "lh_innate_mean": 0.08459753036499024,
+        "n": 25,
+        "odor": "D_partialA",
+        "p_approach_mean": 0.6813873744010925,
+        "p_approach_sd": 0.025202292567141005,
+        "valence_mean": 0.16775969207286834
+      },
+      {
+        "kc_active_frac_mean": 0.013159999940544367,
+        "lh_innate_mean": 0.009603732042014599,
+        "n": 25,
+        "odor": "N_neutral",
+        "p_approach_mean": 0.5565220510959625,
+        "p_approach_sd": 0.06351324371137054,
+        "valence_mean": 0.050826241178438064
+      }
+    ],
+    "pre": [
+      {
+        "kc_active_frac_mean": 0.0745399996638298,
+        "lh_innate_mean": 0.0977723616361618,
+        "n": 25,
+        "odor": "A_rewarded",
+        "p_approach_mean": 0.6161741685867309,
+        "p_approach_sd": 0.007229911909037834,
+        "valence_mean": 0.10415696620941162
+      },
+      {
+        "kc_active_frac_mean": 0.07826000094413757,
+        "lh_innate_mean": 0.07565688103437423,
+        "n": 25,
+        "odor": "B_punished",
+        "p_approach_mean": 0.5943685269355774,
+        "p_approach_sd": 0.006323590411754811,
+        "valence_mean": 0.08406556963920593
+      },
+      {
+        "kc_active_frac_mean": 0.07954000055789948,
+        "lh_innate_mean": 0.08627284675836563,
+        "n": 25,
+        "odor": "C_mixture",
+        "p_approach_mean": 0.6038308763504028,
+        "p_approach_sd": 0.006677255119725835,
+        "valence_mean": 0.09273633182048797
+      },
+      {
+        "kc_active_frac_mean": 0.08819999992847442,
+        "lh_innate_mean": 0.09005419254302978,
+        "n": 25,
+        "odor": "D_partialA",
+        "p_approach_mean": 0.6032419586181641,
+        "p_approach_sd": 0.0062067432575089385,
+        "valence_mean": 0.09219291925430298
+      },
+      {
+        "kc_active_frac_mean": 0.017580000031739474,
+        "lh_innate_mean": 0.011290262788534164,
+        "n": 25,
+        "odor": "N_neutral",
+        "p_approach_mean": 0.5162433362007142,
+        "p_approach_sd": 0.025370621991922398,
+        "valence_mean": 0.014325342811644078
+      }
+    ]
+  },
+  "run_hash": "8e36888a1b019442",
+  "seed": 42,
+  "training": {
+    "blocks": [
+      {
+        "block": 0,
+        "frac_approach_bad": 0.3,
+        "frac_approach_good": 0.25,
+        "frac_correct": 0.6,
+        "n": 20
+      },
+      {
+        "block": 1,
+        "frac_approach_bad": 0.15,
+        "frac_approach_good": 0.5,
+        "frac_correct": 0.75,
+        "n": 20
+      },
+      {
+        "block": 2,
+        "frac_approach_bad": 0.2,
+        "frac_approach_good": 0.4,
+        "frac_correct": 0.75,
+        "n": 20
+      },
+      {
+        "block": 3,
+        "frac_approach_bad": 0.2,
+        "frac_approach_good": 0.65,
+        "frac_correct": 0.75,
+        "n": 20
+      },
+      {
+        "block": 4,
+        "frac_approach_bad": 0.1,
+        "frac_approach_good": 0.4,
+        "frac_correct": 0.85,
+        "n": 20
+      },
+      {
+        "block": 5,
+        "frac_approach_bad": 0.4,
+        "frac_approach_good": 0.35,
+        "frac_correct": 0.6,
+        "n": 20
+      },
+      {
+        "block": 6,
+        "frac_approach_bad": 0.15,
+        "frac_approach_good": 0.35,
+        "frac_correct": 0.7,
+        "n": 20
+      },
+      {
+        "block": 7,
+        "frac_approach_bad": 0.15,
+        "frac_approach_good": 0.55,
+        "frac_correct": 0.75,
+        "n": 20
+      },
+      {
+        "block": 8,
+        "frac_approach_bad": 0.15,
+        "frac_approach_good": 0.2,
+        "frac_correct": 0.75,
+        "n": 20
+      },
+      {
+        "block": 9,
+        "frac_approach_bad": 0.0,
+        "frac_approach_good": 0.5,
+        "frac_correct": 0.85,
+        "n": 20
+      }
+    ],
+    "criterion_block_frac80": 4,
+    "n_effective_punishments": 31,
+    "n_effective_rewards": 79
+  },
+  "transfer": {
+    "pearson_r_p_post_vs_jacA_minus_jacB": 0.9659380361614857,
+    "points": [
+      {
+        "jaccard_to_A": 1.0,
+        "jaccard_to_B": 0.13333333333333333,
+        "odor": "A_rewarded",
+        "p_approach_post": 0.8587529492378235
+      },
+      {
+        "jaccard_to_A": 0.13333333333333333,
+        "jaccard_to_B": 1.0,
+        "odor": "B_punished",
+        "p_approach_post": 0.2732256984710693
+      },
+      {
+        "jaccard_to_A": 0.3317972350230415,
+        "jaccard_to_B": 0.24050632911392406,
+        "odor": "C_mixture",
+        "p_approach_post": 0.6726664471626281
+      },
+      {
+        "jaccard_to_A": 0.23595505617977527,
+        "jaccard_to_B": 0.23161764705882354,
+        "odor": "D_partialA",
+        "p_approach_post": 0.6813873744010925
+      },
+      {
+        "jaccard_to_A": 0.05056179775280899,
+        "jaccard_to_B": 0.043478260869565216,
+        "odor": "N_neutral",
+        "p_approach_post": 0.5565220510959625
+      }
+    ]
+  },
+  "version": "0.2.0"
+}

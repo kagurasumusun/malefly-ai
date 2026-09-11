@@ -35,6 +35,11 @@ class LifLayer {
 public:
     LifLayer(u32 n, const LifConfig& cfg);
 
+    // per-neuron threshold heterogeneity (fixed values are an approximation;
+    // real populations are heterogeneous — docs/RESEARCH.md §MICrONS/BBP)
+    void set_threshold(u32 i, f32 v) { v_thresh_[i] = v; }
+    f32 threshold(u32 i) const { return v_thresh_[i]; }
+
     // integrate one timestep; spikes_ reflects *this* step afterwards
     void step(f32 dt);
 
@@ -60,7 +65,7 @@ private:
     LifConfig cfg_;
     f32 t_now_ = 0.0f;
     u64 total_spikes_ = 0;
-    std::vector<f32> v_, ge_, gi_, refrac_until_;
+    std::vector<f32> v_, ge_, gi_, refrac_until_, v_thresh_;
     std::vector<u8> spikes_;
 };
 

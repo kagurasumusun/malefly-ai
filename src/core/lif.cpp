@@ -9,6 +9,7 @@ LifLayer::LifLayer(u32 n, const LifConfig& cfg) : n_(n), cfg_(cfg) {
     ge_.assign(n, 0.0f);
     gi_.assign(n, 0.0f);
     refrac_until_.assign(n, -1.0f);
+    v_thresh_.assign(n, cfg_.v_thresh);
     spikes_.assign(n, 0);
 }
 
@@ -23,7 +24,7 @@ void LifLayer::step(f32 dt) {
         u8 s = 0;
         if (t_now_ >= refrac_until_[i]) {
             v += dt * ((cfg_.v_rest - v) + ge_[i] - gi_[i]) / cfg_.tau_m;
-            if (v >= cfg_.v_thresh) {
+            if (v >= v_thresh_[i]) {
                 v = cfg_.v_reset;
                 refrac_until_[i] = t_now_ + cfg_.t_refrac;
                 s = 1;
@@ -48,13 +49,14 @@ void LifLayer::reset_state() {
     ge_.assign(n_, 0.0f);
     gi_.assign(n_, 0.0f);
     refrac_until_.assign(n_, -1.0f);
+    std::fill(v_thresh_.begin(), v_thresh_.end(), cfg_.v_thresh);
     std::fill(spikes_.begin(), spikes_.end(), u8{0});
     t_now_ = 0.0f;
     total_spikes_ = 0;
 }
 
 usize LifLayer::memory_bytes() const {
-    return (v_.capacity() + ge_.capacity() + gi_.capacity() + refrac_until_.capacity()) * sizeof(f32)
+    return (v_.capacity() + ge_.capacity() + gi_.capacity() + refrac_until_.capacity() + v_thresh_.capacity()) * sizeof(f32)
          + spikes_.capacity() * sizeof(u8);
 }
 
