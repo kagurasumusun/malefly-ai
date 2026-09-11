@@ -192,6 +192,25 @@ static void test_odors() {
         CHECK(c.profile[g] <= 1.0f + 1e-6f);
 }
 
+// ---------- MB trace-based readout (circuit-state memory) ----------
+static void test_trace_readout() {
+    Rng rng(23);
+    MushroomBodyConfig cfg;
+    cfg.n_kc = 200;
+    cfg.kc_fanin = 3;
+    MushroomBody mb(cfg, rng, 10);
+
+    auto t0 = mb.trace_readout();
+    CHECK(t0.active_frac == 0.0f);
+    CHECK(t0.valence == 0.0f);  // empty trace -> zero valence, not innate bias
+
+    for (u32 k = 0; k < cfg.n_kc; ++k) mb.debug_set_elig(k, 1.0f);
+    auto t1 = mb.trace_readout();
+    CHECK(t1.active_frac == 1.0f);
+    // mean(w_appr in [0.45,0.75]) - mean(w_avoid in [0.30,0.60]) = +0.15
+    CHECK(t1.valence > 0.05f && t1.valence < 0.30f);
+}
+
 // ---------- weak-signal default ----------
 static void test_weak_signal_default() {
     Rng rng(17);
@@ -272,6 +291,7 @@ int main() {
     test_mb_plasticity();
     test_env();
     test_odors();
+    test_trace_readout();
     test_weak_signal_default();
     test_determinism();
     std::printf("%d checks, %d failures\n", g_run, g_fail);

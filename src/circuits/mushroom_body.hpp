@@ -84,6 +84,18 @@ public:
     };
     Readout readout() const;
 
+    // ---- circuit-state memory readout (Goal 2 STM) ----
+    // Valence recomputed from the *current* eligibility trace (a decaying
+    // neural-state memory), not from per-trial spike counters. This is what
+    // decays over the odorless delay; the counter-based readout above does
+    // not, and the two are measured side by side to keep the distinction
+    // honest (PRINCIPLES.md #6).
+    struct TraceReadout {
+        f32 valence = 0;      // elig-weighted mean of (w_appr - w_avoid)
+        f32 active_frac = 0;  // fraction of KCs with elig > kTraceThresh
+    };
+    TraceReadout trace_readout() const;
+
     // ---- introspection (measurement is not optional; PRINCIPLES.md) ----
     const std::vector<f32>& w_appr() const { return w_appr_; }
     const std::vector<f32>& w_avoid() const { return w_avoid_; }

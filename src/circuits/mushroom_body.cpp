@@ -103,6 +103,24 @@ MushroomBody::Readout MushroomBody::readout() const {
     return r;
 }
 
+MushroomBody::TraceReadout MushroomBody::trace_readout() const {
+    constexpr f32 kTraceThresh = 0.05f;  // elig below this = forgotten (measured horizon)
+    f64 s = 0.0, c = 0.0;
+    u32 n = 0;
+    for (u32 k = 0; k < cfg_.n_kc; ++k) {
+        const f32 e = elig_[k];
+        if (e > kTraceThresh) {
+            s += e * (static_cast<f64>(w_appr_[k]) - w_avoid_[k]);
+            c += e;
+            ++n;
+        }
+    }
+    TraceReadout r;
+    r.valence = c > 0.0 ? static_cast<f32>(s / c) : 0.0f;
+    r.active_frac = static_cast<f32>(n) / static_cast<f32>(cfg_.n_kc);
+    return r;
+}
+
 usize MushroomBody::memory_bytes() const {
     return kc_.memory_bytes() + pn2kc_.memory_bytes()
          + (w_appr_.capacity() + w_avoid_.capacity() + elig_.capacity()) * sizeof(f32)

@@ -7,6 +7,7 @@
 #include "circuits/mushroom_body.hpp"
 #include "experiments/calib.hpp"
 #include "experiments/goal1.hpp"
+#include "experiments/goal2.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -86,6 +87,23 @@ int main(int argc, char** argv) {
             else { usage(); return 2; }
         }
         return run_goal1(cfg);
+    }
+
+    if (cmd == "goal2") {
+        Goal2Config cfg;
+        for (int i = 2; i < argc; ++i) {
+            u64 s = cfg.seed;
+            u32 t = cfg.n_train_trials, p = cfg.n_probe_each, e = cfg.n_interfere_trials;
+            std::string o = cfg.out_json, c = cfg.out_csv;
+            if (flag_u64(argv, argc, i, "--seed", s)) cfg.seed = s;
+            else if (flag_u32(argv, argc, i, "--trials", t)) cfg.n_train_trials = t;
+            else if (flag_u32(argv, argc, i, "--probes", p)) cfg.n_probe_each = p;
+            else if (flag_u32(argv, argc, i, "--interfere", e)) cfg.n_interfere_trials = e;
+            else if (flag_str(argv, argc, i, "--out", o)) cfg.out_json = o;
+            else if (flag_str(argv, argc, i, "--csv", c)) cfg.out_csv = c;
+            else { usage(); return 2; }
+        }
+        return run_goal2(cfg);
     }
 
     if (cmd == "calib") {
