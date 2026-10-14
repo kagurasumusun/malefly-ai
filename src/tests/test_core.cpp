@@ -9,6 +9,10 @@
 #include "circuits/action_selection.hpp"
 #include "circuits/antennal_lobe.hpp"
 #include "circuits/brain.hpp"
+#include "circuits/code_agent_engine.hpp"
+#include "circuits/code_sensorium.hpp"
+#include "env/code_env.hpp"
+#include "experiments/code_agent.hpp"
 #include "circuits/lateral_horn.hpp"
 #include "circuits/modulator.hpp"
 #include "circuits/mushroom_body.hpp"
@@ -484,6 +488,62 @@ static void test_determinism() {
     CHECK(h1 != h3);  // different seed -> different dynamics
 }
 
+static void test_code_sensorium() {
+    CodeSensorium sensorium;
+    std::string code = "def add(a, b):\n    return a + b\n";
+    auto tokens = sensorium.tokenize(code);
+    CHECK(!tokens.empty());
+    CHECK(tokens[0].text == "def");
+    CHECK(tokens[0].type == CodeTokenType::Keyword);
+
+    auto vec1 = sensorium.encode_token(tokens[0]);
+    CHECK(vec1.size() == CodeSensorium::N_CHANNELS);
+    f32 sum1 = 0.0f;
+    for (f32 x : vec1) sum1 += x;
+    CHECK(sum1 > 0.0f);
+
+    auto seq_vec = sensorium.encode_sequence(tokens);
+    CHECK(seq_vec.size() == CodeSensorium::N_CHANNELS);
+}
+
+static void test_code_agent_engine() {
+    Rng rng(42);
+    CodeAgentConfig cfg;
+    CodeAgentEngine agent(cfg, rng);
+
+    std::string snippet = "for i in range(10)";
+    auto input_vec = agent.perceive(snippet);
+    CHECK(input_vec.size() == CodeSensorium::N_CHANNELS);
+
+    std::vector<std::string> candidates = {":", " do", " {", "()"};
+    u32 action = agent.select_candidate_action(input_vec, candidates);
+    CHECK(action < candidates.size());
+
+    agent.learn(+1.0f);
+    auto r = agent.readout();
+    CHECK(r.kc_active_frac >= 0.0f);
+}
+
+static void test_code_env() {
+    Rng rng(123);
+    CodeEnv env(rng);
+    CHECK(env.num_tasks() > 0);
+
+    auto task = env.get_task(0);
+    CHECK(env.evaluate(task, task.correct_candidate_idx) == +1.0f);
+    CHECK(env.evaluate(task, task.correct_candidate_idx + 1) == -1.0f);
+}
+
+static void test_code_agent_experiment() {
+    CodeAgentExpConfig cfg;
+    cfg.seed = 99;
+    cfg.n_trials = 20;
+    cfg.out_json = "";
+    cfg.out_csv = "";
+    int res = run_code_agent(cfg);
+    CHECK(res == 0);
+}
+
 int main() {
     test_rng();
     test_lif();
@@ -500,6 +560,10 @@ int main() {
     test_weak_signal_default();
     test_brain_emergent();
     test_determinism();
+    test_code_sensorium();
+    test_code_agent_engine();
+    test_code_env();
+    test_code_agent_experiment();
     std::printf("%d checks, %d failures\n", g_run, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
