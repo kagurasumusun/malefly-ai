@@ -7,6 +7,7 @@
 #include "circuits/mushroom_body.hpp"
 #include "experiments/calib.hpp"
 #include "experiments/code_agent.hpp"
+#include "experiments/code_brain_devops.hpp"
 #include "experiments/goal1.hpp"
 #include "experiments/goal2.hpp"
 #include "experiments/goal3.hpp"
@@ -64,6 +65,7 @@ void usage() {
     std::fprintf(stderr,
                  "malefly-ai: MaleCNS-derived brain-based AI\n"
                  "usage:\n"
+                 "  malefly code_brain_devops [--seed N] [--trials N] [--out results/code_brain_devops.json] [--csv results/code_brain_devops.csv]\n"
                  "  malefly code_agent [--seed N] [--trials N] [--out results/code_agent.json] [--csv results/code_agent.csv]\n"
                  "  malefly goal1 [--seed N] [--trials N] [--probes N] "
                  "[--out results/goal1.json] [--csv results/goal1.csv]\n"
@@ -85,6 +87,21 @@ int main(int argc, char** argv) {
         return 2;
     }
     const std::string cmd = argv[1];
+
+    if (cmd == "code_brain_devops") {
+        CodeBrainDevOpsConfig cfg;
+        for (int i = 2; i < argc; ++i) {
+            u64 s = cfg.seed;
+            u32 t = cfg.n_trials;
+            std::string o = cfg.out_json, c = cfg.out_csv;
+            if (flag_u64(argv, argc, i, "--seed", s)) cfg.seed = s;
+            else if (flag_u32(argv, argc, i, "--trials", t)) cfg.n_trials = t;
+            else if (flag_str(argv, argc, i, "--out", o)) cfg.out_json = o;
+            else if (flag_str(argv, argc, i, "--csv", c)) cfg.out_csv = c;
+            else { usage(); return 2; }
+        }
+        return run_code_brain_devops(cfg);
+    }
 
     if (cmd == "code_agent") {
         CodeAgentExpConfig cfg;

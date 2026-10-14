@@ -10,8 +10,13 @@
 #include "circuits/antennal_lobe.hpp"
 #include "circuits/brain.hpp"
 #include "circuits/code_agent_engine.hpp"
+#include "circuits/code_ast.hpp"
+#include "circuits/code_brain.hpp"
+#include "circuits/code_brain_variants.hpp"
+#include "circuits/code_corpus.hpp"
 #include "circuits/code_sensorium.hpp"
 #include "env/code_env.hpp"
+#include "env/code_sandbox.hpp"
 #include "experiments/code_agent.hpp"
 #include "circuits/lateral_horn.hpp"
 #include "circuits/modulator.hpp"
@@ -534,6 +539,61 @@ static void test_code_env() {
     CHECK(env.evaluate(task, task.correct_candidate_idx + 1) == -1.0f);
 }
 
+static void test_code_sandbox() {
+    std::string valid_code = "def add(a, b):\n    return a + b\n";
+    std::string test_code = "assert add(2, 3) == 5";
+    auto res = CodeSandbox::verify_code_python(valid_code, test_code);
+    CHECK(res.passed == true);
+    CHECK(res.reward == +1.0f);
+
+    std::string invalid_code = "def add(a, b):\n    return a - b\n";
+    auto res2 = CodeSandbox::verify_code_python(invalid_code, test_code);
+    CHECK(res2.passed == false);
+    CHECK(res2.reward == -1.0f);
+}
+
+static void test_code_ast_and_corpus() {
+    std::string code = "def add(a, b):\n    return a + b\n";
+    auto ast = CodeASTEncoder::parse_simple_python(code);
+    CHECK(ast != nullptr);
+    CHECK(ast->children.size() >= 2);
+
+    CodeASTEncoder encoder;
+    auto pattern = encoder.encode_ast(ast);
+    CHECK(pattern.size() == CodeASTEncoder::N_CHANNELS);
+
+    auto corpus = CodeCorpus::load_default_corpus();
+    CHECK(!corpus.empty());
+    CHECK(corpus[0].category == "syntax");
+}
+
+static void test_code_brain() {
+    Rng rng(777);
+    CodeBrainConfig cfg;
+    CodeBrain brain(cfg, rng);
+
+    std::string prompt = "def mult(a, b):\n    ";
+    auto vec = brain.perceive(prompt);
+    CHECK(vec.size() == CodeASTEncoder::N_CHANNELS);
+
+    std::vector<std::string> cands = {"return a * b", "pass", "return a + b", "print(a)"};
+    u32 choice = brain.select_candidate(vec, cands);
+    CHECK(choice < cands.size());
+
+    brain.learn(+1.0f);
+    brain.replay_rest_phase();
+
+    // Test multi-variant runner
+    CodeBrainVariantRunner runnerA(BrainVariantType::StandardHebbian, 101);
+    CodeBrainVariantRunner runnerD(BrainVariantType::FullIntegratedBrain, 102);
+    CHECK(runnerA.variant_name() == "A_StandardHebbian");
+    CHECK(runnerD.variant_name() == "D_FullIntegratedBrain");
+
+    u32 choiceA = runnerA.select_candidate(prompt, cands);
+    CHECK(choiceA < cands.size());
+    runnerA.learn(+1.0f);
+}
+
 static void test_code_agent_experiment() {
     CodeAgentExpConfig cfg;
     cfg.seed = 99;
@@ -563,6 +623,9 @@ int main() {
     test_code_sensorium();
     test_code_agent_engine();
     test_code_env();
+    test_code_sandbox();
+    test_code_ast_and_corpus();
+    test_code_brain();
     test_code_agent_experiment();
     std::printf("%d checks, %d failures\n", g_run, g_fail);
     return g_fail == 0 ? 0 : 1;

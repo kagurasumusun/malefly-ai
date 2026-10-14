@@ -1,0 +1,10 @@
+{
+  "seed": 42,
+  "n_trials": 100,
+  "variants": {
+    "A_StandardHebbian": 0.36,
+    "B_RPEGatedDopamine": 0.29,
+    "C_PFCHippocampalReplay": 0.26,
+    "D_FullIntegratedBrain": 0.25
+  }
+}
