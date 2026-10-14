@@ -2,6 +2,8 @@ build/
 tools/bin/
 *.o
 *.d
+.ninja_deps
+.ninja_log
 results/tmp*
 __pycache__/
 tools/token.local
